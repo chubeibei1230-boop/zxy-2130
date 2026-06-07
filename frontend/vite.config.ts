@@ -13,7 +13,7 @@ export default defineConfig({
     port: 8830,
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:8030',
+        target: 'http://127.0.0.1:8031',
         changeOrigin: true,
       },
     },

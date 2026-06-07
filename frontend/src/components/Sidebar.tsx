@@ -10,6 +10,7 @@ import {
   CheckCircle,
   LogOut,
   Settings,
+  BarChart3,
 } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 
@@ -20,6 +21,7 @@ interface SidebarProps {
 const menuConfig = {
   admin: [
     { path: '/admin/dashboard', label: '仪表盘', icon: LayoutDashboard },
+    { path: '/admin/aging-dashboard', label: '时效看板', icon: BarChart3 },
     { path: '/admin/workflows', label: '流程模板', icon: Workflow },
     { path: '/admin/roles', label: '角色管理', icon: Users },
   ],

@@ -4,6 +4,7 @@ import AdminLayout from './components/AdminLayout'
 import EmployeeLayout from './components/EmployeeLayout'
 import SupervisorLayout from './components/SupervisorLayout'
 import AdminDashboard from './pages/admin/Dashboard'
+import AdminAgingDashboard from './pages/admin/AgingDashboard'
 import AdminWorkflows from './pages/admin/Workflows'
 import AdminWorkflowEditor from './pages/admin/WorkflowEditor'
 import AdminRoles from './pages/admin/Roles'
@@ -41,6 +42,7 @@ function App() {
 
       <Route path="/admin" element={<AdminLayout />}>
         <Route path="dashboard" element={<AdminDashboard />} />
+        <Route path="aging-dashboard" element={<AdminAgingDashboard />} />
         <Route path="workflows" element={<AdminWorkflows />} />
         <Route path="workflows/:id" element={<AdminWorkflowEditor />} />
         <Route path="roles" element={<AdminRoles />} />

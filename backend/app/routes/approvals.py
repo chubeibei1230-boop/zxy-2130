@@ -1,8 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from sqlalchemy.sql import func
 from app.database import get_db
 from typing import List, Optional
-from app.models import User, Application, Workflow, WorkflowNode, ApprovalRecord
+from datetime import datetime
+from app.models import User, Application, Workflow, WorkflowNode, ApprovalRecord, UrgeRecord
 from app.schemas import ApprovalAction
 from app.auth import require_role, get_current_user
 
@@ -29,17 +31,68 @@ def get_next_node(db: Session, current_node_id: int) -> WorkflowNode:
     )
 
 
-def serialize_application(app: Application, db: Session) -> dict:
+def get_urge_info(app: Application, db: Session) -> dict:
+    urge_records = (
+        db.query(UrgeRecord)
+        .filter(UrgeRecord.application_id == app.id)
+        .order_by(UrgeRecord.created_at.desc())
+        .all()
+    )
+    latest_urge = urge_records[0] if urge_records else None
+    return {
+        "urgeCount": len(urge_records),
+        "isUrged": len(urge_records) > 0,
+        "latestUrgeAt": latest_urge.created_at.isoformat() if latest_urge and latest_urge.created_at else None,
+        "latestUrgeStatus": latest_urge.status if latest_urge else None,
+    }
+
+
+def get_aging_info(app: Application, db: Session) -> dict:
+    if not app.current_node_id or not app.current_node_entered_at:
+        return {
+            "remainingHours": None,
+            "elapsedHours": None,
+            "isNearTimeout": False,
+            "isTimeout": False,
+            "timeoutHours": None,
+        }
+    
+    current_node = db.query(WorkflowNode).filter(WorkflowNode.id == app.current_node_id).first()
+    if not current_node or not current_node.timeout_hours:
+        return {
+            "remainingHours": None,
+            "elapsedHours": None,
+            "isNearTimeout": False,
+            "isTimeout": False,
+            "timeoutHours": None,
+        }
+    
+    now = datetime.utcnow()
+    elapsed = now - app.current_node_entered_at.replace(tzinfo=None)
+    elapsed_hours = elapsed.total_seconds() / 3600
+    remaining_hours = current_node.timeout_hours - elapsed_hours
+    
+    return {
+        "remainingHours": round(remaining_hours, 1),
+        "elapsedHours": round(elapsed_hours, 1),
+        "isNearTimeout": remaining_hours <= 24 and remaining_hours > 0,
+        "isTimeout": remaining_hours <= 0,
+        "timeoutHours": current_node.timeout_hours,
+    }
+
+
+def serialize_application(app: Application, db: Session, include_aging: bool = True) -> dict:
     workflow = db.query(Workflow).filter(Workflow.id == app.workflow_id).first()
     applicant = db.query(User).filter(User.id == app.applicant_id).first()
     current_node = None
     if app.current_node_id:
         current_node = db.query(WorkflowNode).filter(WorkflowNode.id == app.current_node_id).first()
 
-    return {
+    result = {
         "id": app.id,
         "workflowId": app.workflow_id,
         "workflowName": workflow.name if workflow else None,
+        "workflowType": workflow.type if workflow else None,
         "title": app.title,
         "content": app.content,
         "applicantId": app.applicant_id,
@@ -47,10 +100,17 @@ def serialize_application(app: Application, db: Session) -> dict:
         "status": app.status,
         "currentNodeId": app.current_node_id,
         "currentNodeName": current_node.name if current_node else None,
+        "currentNodeEnteredAt": app.current_node_entered_at.isoformat() if app.current_node_entered_at else None,
         "attachments": app.attachments.split(",") if app.attachments else [],
         "createdAt": app.created_at.isoformat() if app.created_at else None,
         "updatedAt": app.updated_at.isoformat() if app.updated_at else None,
+        "urgeInfo": get_urge_info(app, db),
     }
+    
+    if include_aging:
+        result["agingInfo"] = get_aging_info(app, db)
+    
+    return result
 
 
 def serialize_record(record: ApprovalRecord, db: Session) -> dict:
@@ -77,6 +137,7 @@ def serialize_record(record: ApprovalRecord, db: Session) -> dict:
 
 @router.get("/pending", response_model=List[dict])
 def get_pending_approvals(
+    filter: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(["admin", "supervisor"])),
 ):
@@ -90,7 +151,22 @@ def get_pending_approvals(
         )
 
     applications = query.order_by(Application.created_at.desc()).all()
-    return [serialize_application(app, db) for app in applications]
+    serialized = [serialize_application(app, db) for app in applications]
+    
+    if filter:
+        filtered = []
+        for app in serialized:
+            aging = app.get("agingInfo", {})
+            urge = app.get("urgeInfo", {})
+            if filter == "near_timeout" and aging.get("isNearTimeout"):
+                filtered.append(app)
+            elif filter == "timeout" and aging.get("isTimeout"):
+                filtered.append(app)
+            elif filter == "urged" and urge.get("isUrged"):
+                filtered.append(app)
+        return filtered
+    
+    return serialized
 
 
 @router.get("/handled", response_model=List[dict])
@@ -173,16 +249,30 @@ def approve_application(
     )
     db.add(approval_record)
 
+    if application.current_node_id:
+        (
+            db.query(UrgeRecord)
+            .filter(
+                UrgeRecord.application_id == application_id,
+                UrgeRecord.node_id == application.current_node_id,
+                UrgeRecord.status == "pending",
+            )
+            .update({"status": "handled", "handled_at": func.now()})
+        )
+
     next_node = get_next_node(db, application.current_node_id) if application.current_node_id else None
 
     if next_node:
         if next_node.type == "end":
             application.status = "completed"
             application.current_node_id = next_node.id
+            application.current_node_entered_at = None
         else:
             application.current_node_id = next_node.id
+            application.current_node_entered_at = func.now()
     else:
         application.status = "completed"
+        application.current_node_entered_at = None
 
     db.commit()
     db.refresh(approval_record)
@@ -219,7 +309,19 @@ def reject_application(
     )
     db.add(approval_record)
 
+    if application.current_node_id:
+        (
+            db.query(UrgeRecord)
+            .filter(
+                UrgeRecord.application_id == application_id,
+                UrgeRecord.node_id == application.current_node_id,
+                UrgeRecord.status == "pending",
+            )
+            .update({"status": "handled", "handled_at": func.now()})
+        )
+
     application.status = "rejected"
+    application.current_node_entered_at = None
     db.commit()
     db.refresh(approval_record)
 

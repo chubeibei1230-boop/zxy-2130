@@ -14,11 +14,13 @@ class Application(Base):
     applicant_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     status = Column(String(20), nullable=False, default="draft")
     current_node_id = Column(Integer, ForeignKey("workflow_nodes.id"))
+    current_node_entered_at = Column(DateTime(timezone=True))
     attachments = Column(Text)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     approval_records = relationship("ApprovalRecord", back_populates="application", cascade="all, delete-orphan")
+    urge_records = relationship("UrgeRecord", back_populates="application", cascade="all, delete-orphan")
 
 
 class ApprovalRecord(Base):
@@ -34,3 +36,17 @@ class ApprovalRecord(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     application = relationship("Application", back_populates="approval_records")
+
+
+class UrgeRecord(Base):
+    __tablename__ = "urge_records"
+
+    id = Column(Integer, primary_key=True, index=True)
+    application_id = Column(Integer, ForeignKey("applications.id", ondelete="CASCADE"), nullable=False)
+    node_id = Column(Integer, ForeignKey("workflow_nodes.id"), nullable=False)
+    urged_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    status = Column(String(20), nullable=False, default="pending")
+    handled_at = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    application = relationship("Application", back_populates="urge_records")

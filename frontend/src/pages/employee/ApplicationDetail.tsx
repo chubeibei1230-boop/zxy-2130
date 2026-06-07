@@ -1,36 +1,65 @@
 import React, { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, User, MessageSquare, Save, Send } from 'lucide-react'
+import { ArrowLeft, User, MessageSquare, Save, Send, Bell, AlertTriangle, Clock } from 'lucide-react'
 import { applicationAPI } from '@/services/api'
-import type { Application, ApprovalRecord } from '@/types'
+import type { Application, ApprovalRecord, UrgeRecord } from '@/types'
+import { cn } from '@/lib/utils'
 
 const EmployeeApplicationDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const [application, setApplication] = useState<Application | null>(null)
   const [records, setRecords] = useState<ApprovalRecord[]>([])
+  const [urgeRecords, setUrgeRecords] = useState<UrgeRecord[]>([])
   const [content, setContent] = useState('')
   const [attachmentsText, setAttachmentsText] = useState('')
   const [saving, setSaving] = useState(false)
+  const [urging, setUrging] = useState(false)
+  const [urgeMessage, setUrgeMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   useEffect(() => {
     if (!id) return
     const fetchData = async () => {
       try {
-        const [app, recs] = await Promise.all([
+        const [app, recs, urgeRecs] = await Promise.all([
           applicationAPI.getApplication(parseInt(id)),
           applicationAPI.getApprovalRecords(parseInt(id)),
+          applicationAPI.getUrgeRecords(parseInt(id)),
         ])
         setApplication(app)
         setContent(app.content || '')
         setAttachmentsText((app.attachments || []).join('\n'))
         setRecords(recs)
+        setUrgeRecords(urgeRecs)
       } catch (err) {
         console.error('Failed to fetch data', err)
       }
     }
     fetchData()
   }, [id])
+
+  const handleUrge = async () => {
+    if (!id || !application) return
+    setUrging(true)
+    setUrgeMessage(null)
+    try {
+      await applicationAPI.urgeApplication(parseInt(id))
+      const [app, urgeRecs] = await Promise.all([
+        applicationAPI.getApplication(parseInt(id)),
+        applicationAPI.getUrgeRecords(parseInt(id)),
+      ])
+      setApplication(app)
+      setUrgeRecords(urgeRecs)
+      setUrgeMessage({ type: 'success', text: '催办成功！已通知审批人尽快处理' })
+    } catch (err: any) {
+      setUrgeMessage({ 
+        type: 'error', 
+        text: err.response?.data?.detail || '催办失败，请稍后重试' 
+      })
+    } finally {
+      setUrging(false)
+    }
+  }
 
   if (!application) {
     return (
@@ -118,6 +147,106 @@ const EmployeeApplicationDetail: React.FC = () => {
             </div>
           )}
         </div>
+
+        {application.status === 'pending' && (
+          <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 mb-6">
+            <h2 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <Bell className="w-5 h-5" />
+              审批催办
+            </h2>
+            
+            {application.urgeInfo?.isUrged && (
+              <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                <div className="flex items-center gap-2 text-amber-700">
+                  <AlertTriangle className="w-4 h-4" />
+                  <span className="text-sm font-medium">
+                    已发起 {application.urgeInfo.urgeCount} 次催办
+                  </span>
+                </div>
+                {application.urgeInfo.latestUrgeAt && (
+                  <p className="text-xs text-amber-600 mt-1">
+                    最近催办：{new Date(application.urgeInfo.latestUrgeAt).toLocaleString()}
+                    <span className="ml-2 px-1.5 py-0.5 bg-amber-100 rounded text-xs">
+                      {application.urgeInfo.latestUrgeStatus === 'pending' ? '待处理' : '已处理'}
+                    </span>
+                  </p>
+                )}
+              </div>
+            )}
+
+            {urgeMessage && (
+              <div className={cn(
+                "mb-4 p-3 rounded-lg text-sm",
+                urgeMessage.type === 'success' 
+                  ? "bg-green-50 border border-green-200 text-green-700"
+                  : "bg-red-50 border border-red-200 text-red-700"
+              )}>
+                {urgeMessage.text}
+              </div>
+            )}
+
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">
+                  当前节点：<span className="font-medium text-gray-900">{application.currentNodeName}</span>
+                </p>
+                {application.currentNodeEnteredAt && (
+                  <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
+                    <Clock className="w-3 h-3" />
+                    进入节点时间：{new Date(application.currentNodeEnteredAt).toLocaleString()}
+                  </p>
+                )}
+              </div>
+              <button
+                onClick={handleUrge}
+                disabled={urging}
+                className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Bell className="w-4 h-4" />
+                {urging ? '催办中...' : '发起催办'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {urgeRecords.length > 0 && (
+          <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 mb-6">
+            <h2 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <Bell className="w-5 h-5" />
+              催办记录
+            </h2>
+            <div className="space-y-3">
+              {urgeRecords.map((record) => (
+                <div key={record.id} className="flex gap-3 p-3 bg-gray-50 rounded-lg">
+                  <div className="w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0">
+                    <Bell className="w-4 h-4 text-amber-600" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-gray-900">{record.nodeName}</span>
+                      <span className={cn(
+                        "px-2 py-0.5 rounded text-xs font-medium",
+                        record.status === 'pending'
+                          ? "bg-amber-100 text-amber-700"
+                          : "bg-green-100 text-green-700"
+                      )}>
+                        {record.status === 'pending' ? '待处理' : '已处理'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">
+                      催办时间：{new Date(record.createdAt).toLocaleString()}
+                    </p>
+                    {record.handledAt && (
+                      <p className="text-xs text-gray-500">
+                        处理时间：{new Date(record.handledAt).toLocaleString()}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {canSupplement && (
           <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 mb-6">

@@ -9,6 +9,8 @@ import {
   Application,
   ApprovalRecord,
   NodeHistory,
+  UrgeRecord,
+  AgingDashboardData,
 } from '@/types';
 
 const api = axios.create({
@@ -94,11 +96,17 @@ export const applicationAPI = {
     api.post(`/applications/${id}/submit`).then((res) => res.data),
   getApprovalRecords: (id: number): Promise<ApprovalRecord[]> =>
     api.get(`/applications/${id}/records`).then((res) => res.data),
+  urgeApplication: (id: number): Promise<UrgeRecord> =>
+    api.post(`/applications/${id}/urge`).then((res) => res.data),
+  getUrgeRecords: (id: number): Promise<UrgeRecord[]> =>
+    api.get(`/applications/${id}/urge-records`).then((res) => res.data),
+  getAgingDashboard: (): Promise<AgingDashboardData> =>
+    api.get('/applications/admin/aging-dashboard').then((res) => res.data),
 };
 
 export const approvalAPI = {
-  getPendingApprovals: (): Promise<Application[]> =>
-    api.get('/approvals/pending').then((res) => res.data),
+  getPendingApprovals: (filter?: string): Promise<Application[]> =>
+    api.get('/approvals/pending', { params: filter ? { filter } : undefined }).then((res) => res.data),
   getHandledApprovals: (params?: { status?: string }): Promise<Application[]> =>
     api
       .get('/approvals/handled', { params: params?.status ? { status_filter: params.status } : undefined })
