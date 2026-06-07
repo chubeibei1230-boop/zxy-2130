@@ -104,6 +104,11 @@ const SupervisorApprovedList: React.FC = () => {
                     <p className="text-sm text-gray-500">
                       申请人：{app.applicantName} · {app.workflowName}
                     </p>
+                    {app.status === 'withdrawn' && app.withdrawReason && (
+                      <p className="text-xs text-purple-600 mt-1 max-w-md truncate">
+                        撤回原因：{app.withdrawReason}
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-4">

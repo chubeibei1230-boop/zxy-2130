@@ -702,6 +702,13 @@ def resubmit_application(
     db.commit()
     db.refresh(new_application)
 
+    next_node = get_next_workflow_node(db, start_node)
+    new_application.status = "pending" if next_node else "completed"
+    new_application.current_node_id = next_node.id if next_node else start_node.id if start_node else None
+    new_application.current_node_entered_at = func.now() if next_node else None
+    db.commit()
+    db.refresh(new_application)
+
     return serialize_application(new_application, db)
 
 

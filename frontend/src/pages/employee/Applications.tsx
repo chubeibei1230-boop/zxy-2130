@@ -123,9 +123,14 @@ const EmployeeApplications: React.FC = () => {
                   </div>
                 </div>
                 <div className="flex items-center gap-4">
-                  {app.currentNodeName && (
+                  {app.currentNodeName && app.status !== 'withdrawn' && app.status !== 'completed' && app.status !== 'rejected' && (
                     <span className="text-sm text-gray-500">
                       当前节点：{app.currentNodeName}
+                    </span>
+                  )}
+                  {app.status === 'withdrawn' && app.withdrawReason && (
+                    <span className="text-sm text-purple-600 max-w-xs truncate">
+                      撤回原因：{app.withdrawReason}
                     </span>
                   )}
                   <span

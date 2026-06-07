@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { Workflow, Users, FileText, CheckCircle, XCircle } from 'lucide-react'
 import { workflowAPI, applicationAPI, userAPI } from '@/services/api'
-import type { WithdrawnStats, WithdrawnRecord } from '@/types'
+import type { WithdrawnRecord } from '@/types'
 
 const AdminDashboard: React.FC = () => {
   const [stats, setStats] = useState({

@@ -183,9 +183,24 @@ def get_handled_approvals(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(["admin", "supervisor"])),
 ):
-    query = db.query(Application).join(ApprovalRecord).filter(
+    handled_by_user = db.query(Application.id).join(ApprovalRecord).filter(
         ApprovalRecord.approver_id == current_user.id
+    ).subquery()
+
+    withdrawn_at_supervisor_node = db.query(Application.id).filter(
+        Application.status == "withdrawn",
+        Application.current_node_id.isnot(None)
+    ).join(WorkflowNode, Application.current_node_id == WorkflowNode.id).filter(
+        (WorkflowNode.assignee_role == current_user.role) |
+        (WorkflowNode.assignee_user_id == current_user.id) |
+        (WorkflowNode.assignee_role.is_(None) & (current_user.role == "supervisor"))
+    ).subquery()
+
+    query = db.query(Application).filter(
+        (Application.id.in_(handled_by_user)) | 
+        (Application.id.in_(withdrawn_at_supervisor_node))
     )
+    
     if status_filter:
         query = query.filter(Application.status == status_filter)
     applications = query.order_by(Application.updated_at.desc()).distinct().all()
@@ -230,10 +245,16 @@ def approve_application(
             detail="Application not found",
         )
 
+    if application.status == "withdrawn":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="申请已被撤回，无法处理",
+        )
+
     if application.status != "pending":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Application is not pending",
+            detail="申请不在待处理状态",
         )
 
     current_node = None
@@ -299,13 +320,19 @@ def reject_application(
     if not application:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Application not found",
+            detail="申请不存在",
+        )
+
+    if application.status == "withdrawn":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="申请已被撤回，无法处理",
         )
 
     if application.status != "pending":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Application is not pending",
+            detail="申请不在待处理状态",
         )
 
     approval_record = ApprovalRecord(
@@ -347,13 +374,19 @@ def transfer_application(
     if not application:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Application not found",
+            detail="申请不存在",
+        )
+
+    if application.status == "withdrawn":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="申请已被撤回，无法处理",
         )
 
     if application.status != "pending":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Application is not pending",
+            detail="申请不在待处理状态",
         )
 
     if not action_data.transferToUserId:

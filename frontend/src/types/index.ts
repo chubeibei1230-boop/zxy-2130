@@ -116,7 +116,7 @@ export interface WithdrawnStats {
   recentWithdrawn: WithdrawnRecord[];
 }
 
-export type ApprovalAction = 'approve' | 'reject' | 'transfer';
+export type ApprovalAction = 'approve' | 'reject' | 'transfer' | 'withdraw';
 
 export interface ApprovalRecord {
   id: number;
