@@ -10,6 +10,7 @@ const statusLabels: Record<string, { label: string; color: string }> = {
   approved: { label: '已通过', color: 'bg-green-100 text-green-700' },
   completed: { label: '已完成', color: 'bg-green-100 text-green-700' },
   rejected: { label: '已退回', color: 'bg-red-100 text-red-700' },
+  withdrawn: { label: '已撤回', color: 'bg-purple-100 text-purple-700' },
 }
 
 const EmployeeApplications: React.FC = () => {
@@ -88,6 +89,16 @@ const EmployeeApplications: React.FC = () => {
           }`}
         >
           已退回
+        </button>
+        <button
+          onClick={() => setFilter('withdrawn')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            filter === 'withdrawn'
+              ? 'bg-purple-100 text-purple-700'
+              : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
+          }`}
+        >
+          已撤回
         </button>
       </div>
 

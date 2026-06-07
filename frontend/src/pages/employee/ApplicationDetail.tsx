@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, User, MessageSquare, Save, Send, Bell, AlertTriangle, Clock } from 'lucide-react'
+import { ArrowLeft, User, MessageSquare, Save, Send, Bell, AlertTriangle, Clock, X, RotateCcw, FileText } from 'lucide-react'
 import { applicationAPI } from '@/services/api'
 import type { Application, ApprovalRecord, UrgeRecord } from '@/types'
 import { cn } from '@/lib/utils'
@@ -17,6 +17,11 @@ const EmployeeApplicationDetail: React.FC = () => {
   const [urging, setUrging] = useState(false)
   const [urgeMessage, setUrgeMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [, setTick] = useState(0)
+  const [showWithdrawModal, setShowWithdrawModal] = useState(false)
+  const [withdrawReason, setWithdrawReason] = useState('')
+  const [withdrawing, setWithdrawing] = useState(false)
+  const [resubmitting, setResubmitting] = useState(false)
+  const [actionMessage, setActionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   useEffect(() => {
     const timer = setInterval(() => setTick(t => t + 1), 60000)
@@ -87,6 +92,48 @@ const EmployeeApplicationDetail: React.FC = () => {
     }
   }
 
+  const handleWithdraw = async () => {
+    if (!id || !withdrawReason.trim()) return
+    setWithdrawing(true)
+    setActionMessage(null)
+    try {
+      const app = await applicationAPI.withdrawApplication(parseInt(id), withdrawReason.trim())
+      setApplication(app)
+      setShowWithdrawModal(false)
+      setWithdrawReason('')
+      setActionMessage({ type: 'success', text: '申请已成功撤回' })
+      const recs = await applicationAPI.getApprovalRecords(parseInt(id))
+      setRecords(recs)
+    } catch (err: any) {
+      setActionMessage({ 
+        type: 'error', 
+        text: err.response?.data?.detail || '撤回失败，请稍后重试' 
+      })
+    } finally {
+      setWithdrawing(false)
+    }
+  }
+
+  const handleResubmit = async () => {
+    if (!id) return
+    setResubmitting(true)
+    setActionMessage(null)
+    try {
+      const newApp = await applicationAPI.resubmitApplication(parseInt(id))
+      setActionMessage({ type: 'success', text: '已基于原申请内容创建新申请，正在跳转...' })
+      setTimeout(() => {
+        navigate(`/employee/applications/${newApp.id}`)
+      }, 1500)
+    } catch (err: any) {
+      setActionMessage({ 
+        type: 'error', 
+        text: err.response?.data?.detail || '再次发起失败，请稍后重试' 
+      })
+    } finally {
+      setResubmitting(false)
+    }
+  }
+
   if (!application) {
     return (
       <div className="p-8 flex items-center justify-center">
@@ -100,9 +147,20 @@ const EmployeeApplicationDetail: React.FC = () => {
     pending: 'bg-amber-100 text-amber-700',
     completed: 'bg-green-100 text-green-700',
     rejected: 'bg-red-100 text-red-700',
+    withdrawn: 'bg-purple-100 text-purple-700',
+  }
+
+  const statusLabels: Record<string, string> = {
+    draft: '草稿',
+    pending: '审批中',
+    completed: '已完成',
+    rejected: '已退回',
+    withdrawn: '已撤回',
   }
 
   const canSupplement = application.status === 'draft' || application.status === 'rejected'
+  const canWithdraw = application.status === 'pending'
+  const canResubmit = ['withdrawn', 'rejected', 'completed'].includes(application.status)
 
   const handleSaveSupplement = async (submitAfterSave = false) => {
     if (!id) return
@@ -154,7 +212,7 @@ const EmployeeApplicationDetail: React.FC = () => {
                 statusColors[application.status] || 'bg-gray-100 text-gray-700'
               }`}
             >
-              {application.status}
+              {statusLabels[application.status] || application.status}
             </span>
           </div>
           <div className="prose max-w-none">
@@ -172,7 +230,98 @@ const EmployeeApplicationDetail: React.FC = () => {
               </div>
             </div>
           )}
+
+          {application.originalApplicationId && (
+            <div className="mt-4 pt-4 border-t border-gray-100">
+              <p className="text-sm text-gray-500 flex items-center gap-2">
+                <FileText className="w-4 h-4" />
+                基于原申请发起：
+                <span className="text-primary-600 font-medium">
+                  {application.originalApplicationTitle || `申请 #${application.originalApplicationId}`}
+                </span>
+              </p>
+            </div>
+          )}
         </div>
+
+        {actionMessage && (
+          <div className={cn(
+            "mb-6 p-4 rounded-xl text-sm",
+            actionMessage.type === 'success' 
+              ? "bg-green-50 border border-green-200 text-green-700"
+              : "bg-red-50 border border-red-200 text-red-700"
+          )}>
+            {actionMessage.text}
+          </div>
+        )}
+
+        {application.status === 'withdrawn' && (
+          <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 mb-6">
+            <h2 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <X className="w-5 h-5 text-purple-600" />
+              撤回信息
+            </h2>
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-500 w-20">撤回人：</span>
+                <span className="text-sm font-medium text-gray-900">{application.withdrawnByName}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-500 w-20">撤回时间：</span>
+                <span className="text-sm text-gray-900">
+                  {application.withdrawnAt ? new Date(application.withdrawnAt).toLocaleString() : '-'}
+                </span>
+              </div>
+              <div className="flex items-start gap-2">
+                <span className="text-sm text-gray-500 w-20 flex-shrink-0">撤回原因：</span>
+                <p className="text-sm text-gray-900 whitespace-pre-wrap">{application.withdrawReason}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {canWithdraw && (
+          <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 mb-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="font-semibold text-gray-900 flex items-center gap-2">
+                  <X className="w-5 h-5 text-red-500" />
+                  撤回申请
+                </h2>
+                <p className="text-sm text-gray-500 mt-1">在审批人处理前可主动撤回申请</p>
+              </div>
+              <button
+                onClick={() => setShowWithdrawModal(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors"
+              >
+                <X className="w-4 h-4" />
+                撤回申请
+              </button>
+            </div>
+          </div>
+        )}
+
+        {canResubmit && (
+          <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 mb-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="font-semibold text-gray-900 flex items-center gap-2">
+                  <RotateCcw className="w-5 h-5 text-blue-500" />
+                  再次发起
+                </h2>
+                <p className="text-sm text-gray-500 mt-1">基于原申请内容快速创建新申请</p>
+              </div>
+              <button
+                onClick={handleResubmit}
+                disabled={resubmitting}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors disabled:opacity-50"
+              >
+                <RotateCcw className="w-4 h-4" />
+                {resubmitting ? '处理中...' : '再次发起'}
+              </button>
+            </div>
+          </div>
+        )}
 
         {application.status === 'pending' && (() => {
           const urgeWait = getUrgeWaitInfo()
@@ -371,6 +520,8 @@ const EmployeeApplicationDetail: React.FC = () => {
                           ? 'bg-green-100 text-green-700'
                           : record.action === 'reject'
                           ? 'bg-red-100 text-red-700'
+                          : record.action === 'withdraw'
+                          ? 'bg-purple-100 text-purple-700'
                           : 'bg-blue-100 text-blue-700'
                       }`}
                     >
@@ -378,6 +529,8 @@ const EmployeeApplicationDetail: React.FC = () => {
                         ? '通过'
                         : record.action === 'reject'
                         ? '退回'
+                        : record.action === 'withdraw'
+                        ? '撤回'
                         : '转交'}
                     </span>
                     <span className="text-xs text-gray-400">
@@ -401,6 +554,50 @@ const EmployeeApplicationDetail: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {showWithdrawModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 w-full max-w-md mx-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <X className="w-5 h-5 text-red-500" />
+              撤回申请
+            </h3>
+            <p className="text-sm text-gray-600 mb-4">
+              撤回后申请将从审批人待办中移除，请填写撤回原因：
+            </p>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                撤回原因 <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                value={withdrawReason}
+                onChange={(e) => setWithdrawReason(e.target.value)}
+                placeholder="请输入撤回原因..."
+                rows={4}
+                className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-red-500 outline-none resize-none"
+              />
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowWithdrawModal(false)
+                  setWithdrawReason('')
+                }}
+                className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleWithdraw}
+                disabled={withdrawing || !withdrawReason.trim()}
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
+              >
+                {withdrawing ? '撤回中...' : '确认撤回'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

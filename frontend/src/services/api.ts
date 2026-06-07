@@ -11,6 +11,7 @@ import {
   NodeHistory,
   UrgeRecord,
   AgingDashboardData,
+  WithdrawnStats,
 } from '@/types';
 
 const api = axios.create({
@@ -102,6 +103,12 @@ export const applicationAPI = {
     api.get(`/applications/${id}/urge-records`).then((res) => res.data),
   getAgingDashboard: (): Promise<AgingDashboardData> =>
     api.get('/applications/admin/aging-dashboard').then((res) => res.data),
+  withdrawApplication: (id: number, reason: string): Promise<Application> =>
+    api.post(`/applications/${id}/withdraw`, { reason }).then((res) => res.data),
+  resubmitApplication: (id: number): Promise<Application> =>
+    api.post(`/applications/${id}/resubmit`).then((res) => res.data),
+  getWithdrawnStats: (): Promise<WithdrawnStats> =>
+    api.get('/applications/admin/withdrawn-stats').then((res) => res.data),
 };
 
 export const approvalAPI = {

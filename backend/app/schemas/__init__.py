@@ -13,6 +13,7 @@ from app.schemas.application import (
     ApplicationUpdate,
     ApprovalRecord,
     ApprovalAction,
+    WithdrawRequest,
 )
 from app.schemas.common import Token, TokenData
 
@@ -32,6 +33,7 @@ __all__ = [
     "ApplicationUpdate",
     "ApprovalRecord",
     "ApprovalAction",
+    "WithdrawRequest",
     "Token",
     "TokenData",
 ]

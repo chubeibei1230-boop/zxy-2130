@@ -5,7 +5,7 @@ from typing import List, Optional
 from datetime import datetime, timedelta
 from app.database import get_db
 from app.models import User, Application, Workflow, WorkflowNode, ApprovalRecord, UrgeRecord
-from app.schemas import ApplicationCreate, ApplicationUpdate
+from app.schemas import ApplicationCreate, ApplicationUpdate, WithdrawRequest
 from app.auth import get_current_user, require_role
 
 router = APIRouter(prefix="/api/applications", tags=["applications"])
@@ -68,6 +68,14 @@ def serialize_application(app: Application, db: Session, include_aging: bool = F
     if app.current_node_id:
         current_node = db.query(WorkflowNode).filter(WorkflowNode.id == app.current_node_id).first()
     
+    withdrawn_by_user = None
+    if app.withdrawn_by:
+        withdrawn_by_user = db.query(User).filter(User.id == app.withdrawn_by).first()
+    
+    original_app = None
+    if app.original_application_id:
+        original_app = db.query(Application).filter(Application.id == app.original_application_id).first()
+    
     result = {
         "id": app.id,
         "workflowId": app.workflow_id,
@@ -85,6 +93,12 @@ def serialize_application(app: Application, db: Session, include_aging: bool = F
         "createdAt": app.created_at.isoformat() if app.created_at else None,
         "updatedAt": app.updated_at.isoformat() if app.updated_at else None,
         "urgeInfo": get_urge_info(app, db),
+        "withdrawnAt": app.withdrawn_at.isoformat() if app.withdrawn_at else None,
+        "withdrawnBy": app.withdrawn_by,
+        "withdrawnByName": withdrawn_by_user.name if withdrawn_by_user else None,
+        "withdrawReason": app.withdraw_reason,
+        "originalApplicationId": app.original_application_id,
+        "originalApplicationTitle": original_app.title if original_app else None,
     }
     
     if include_aging:
@@ -582,4 +596,142 @@ def get_aging_dashboard(
         "timeDistribution": time_distribution,
         "workflowStats": workflow_stats,
         "nodeBottlenecks": node_bottlenecks,
+    }
+
+
+@router.post("/{application_id}/withdraw", response_model=dict)
+def withdraw_application(
+    application_id: int,
+    withdraw_data: WithdrawRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["admin", "employee"])),
+):
+    application = db.query(Application).filter(Application.id == application_id).first()
+    if not application:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="申请不存在",
+        )
+
+    if application.applicant_id != current_user.id and current_user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="无权限撤回此申请",
+        )
+
+    if application.status != "pending":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="只能撤回审批中的申请",
+        )
+
+    if not withdraw_data.reason or not withdraw_data.reason.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="请填写撤回原因",
+        )
+
+    application.status = "withdrawn"
+    application.withdrawn_at = func.now()
+    application.withdrawn_by = current_user.id
+    application.withdraw_reason = withdraw_data.reason.strip()
+
+    withdraw_record = ApprovalRecord(
+        application_id=application_id,
+        node_id=application.current_node_id if application.current_node_id else 0,
+        approver_id=current_user.id,
+        action="withdraw",
+        comment=withdraw_data.reason.strip(),
+    )
+    db.add(withdraw_record)
+    
+    db.commit()
+    db.refresh(application)
+
+    return serialize_application(application, db)
+
+
+@router.post("/{application_id}/resubmit", response_model=dict, status_code=status.HTTP_201_CREATED)
+def resubmit_application(
+    application_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["admin", "employee"])),
+):
+    original_application = db.query(Application).filter(Application.id == application_id).first()
+    if not original_application:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="原申请不存在",
+        )
+
+    if original_application.applicant_id != current_user.id and current_user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="无权限基于此申请再次发起",
+        )
+
+    if original_application.status not in ["withdrawn", "rejected", "completed"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="只能基于已撤回、已退回或已完成的申请再次发起",
+        )
+
+    workflow = db.query(Workflow).filter(Workflow.id == original_application.workflow_id).first()
+    if not workflow:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="关联的流程模板不存在",
+        )
+
+    start_node = db.query(WorkflowNode).filter(
+        WorkflowNode.workflow_id == original_application.workflow_id,
+        WorkflowNode.type == "start",
+    ).first()
+
+    new_application = Application(
+        workflow_id=original_application.workflow_id,
+        title=original_application.title,
+        content=original_application.content,
+        applicant_id=current_user.id,
+        status="draft",
+        current_node_id=start_node.id if start_node else None,
+        attachments=original_application.attachments,
+        original_application_id=original_application.id,
+    )
+    db.add(new_application)
+    db.commit()
+    db.refresh(new_application)
+
+    return serialize_application(new_application, db)
+
+
+@router.get("/admin/withdrawn-stats", response_model=dict)
+def get_withdrawn_stats(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["admin"])),
+):
+    total_withdrawn = db.query(Application).filter(Application.status == "withdrawn").count()
+    
+    recent_withdrawn = (
+        db.query(Application)
+        .filter(Application.status == "withdrawn")
+        .order_by(Application.withdrawn_at.desc())
+        .limit(5)
+        .all()
+    )
+    
+    recent_list = []
+    for app in recent_withdrawn:
+        applicant = db.query(User).filter(User.id == app.applicant_id).first()
+        recent_list.append({
+            "id": app.id,
+            "title": app.title,
+            "applicantName": applicant.name if applicant else None,
+            "withdrawnAt": app.withdrawn_at.isoformat() if app.withdrawn_at else None,
+            "withdrawReason": app.withdraw_reason,
+        })
+    
+    return {
+        "totalWithdrawn": total_withdrawn,
+        "recentWithdrawn": recent_list,
     }

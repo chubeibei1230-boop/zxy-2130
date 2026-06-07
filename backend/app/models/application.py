@@ -18,6 +18,11 @@ class Application(Base):
     attachments = Column(Text)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    
+    withdrawn_at = Column(DateTime(timezone=True))
+    withdrawn_by = Column(Integer, ForeignKey("users.id"))
+    withdraw_reason = Column(Text)
+    original_application_id = Column(Integer, ForeignKey("applications.id"))
 
     approval_records = relationship("ApprovalRecord", back_populates="application", cascade="all, delete-orphan")
     urge_records = relationship("UrgeRecord", back_populates="application", cascade="all, delete-orphan")

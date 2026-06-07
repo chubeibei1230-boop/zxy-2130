@@ -48,7 +48,7 @@ export interface Workflow {
   createdAt: string;
 }
 
-export type ApplicationStatus = 'draft' | 'pending' | 'approved' | 'rejected' | 'completed';
+export type ApplicationStatus = 'draft' | 'pending' | 'approved' | 'rejected' | 'completed' | 'withdrawn';
 
 export interface UrgeInfo {
   urgeCount: number;
@@ -95,6 +95,25 @@ export interface Application {
   updatedAt: string;
   urgeInfo?: UrgeInfo;
   agingInfo?: AgingInfo;
+  withdrawnAt?: string;
+  withdrawnBy?: number;
+  withdrawnByName?: string;
+  withdrawReason?: string;
+  originalApplicationId?: number;
+  originalApplicationTitle?: string;
+}
+
+export interface WithdrawnRecord {
+  id: number;
+  title: string;
+  applicantName?: string;
+  withdrawnAt: string;
+  withdrawReason: string;
+}
+
+export interface WithdrawnStats {
+  totalWithdrawn: number;
+  recentWithdrawn: WithdrawnRecord[];
 }
 
 export type ApprovalAction = 'approve' | 'reject' | 'transfer';

@@ -21,6 +21,10 @@ class ApplicationUpdate(BaseModel):
     status: Optional[str] = None
 
 
+class WithdrawRequest(BaseModel):
+    reason: str
+
+
 class ApprovalAction(BaseModel):
     comment: str
     transferToUserId: Optional[int] = None

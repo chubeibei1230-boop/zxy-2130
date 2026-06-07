@@ -87,6 +87,10 @@ def serialize_application(app: Application, db: Session, include_aging: bool = T
     current_node = None
     if app.current_node_id:
         current_node = db.query(WorkflowNode).filter(WorkflowNode.id == app.current_node_id).first()
+    
+    withdrawn_by_user = None
+    if app.withdrawn_by:
+        withdrawn_by_user = db.query(User).filter(User.id == app.withdrawn_by).first()
 
     result = {
         "id": app.id,
@@ -105,6 +109,10 @@ def serialize_application(app: Application, db: Session, include_aging: bool = T
         "createdAt": app.created_at.isoformat() if app.created_at else None,
         "updatedAt": app.updated_at.isoformat() if app.updated_at else None,
         "urgeInfo": get_urge_info(app, db),
+        "withdrawnAt": app.withdrawn_at.isoformat() if app.withdrawn_at else None,
+        "withdrawnBy": app.withdrawn_by,
+        "withdrawnByName": withdrawn_by_user.name if withdrawn_by_user else None,
+        "withdrawReason": app.withdraw_reason,
     }
     
     if include_aging:

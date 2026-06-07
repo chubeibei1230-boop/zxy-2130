@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, User as UserIcon, MessageSquare, Check, X, Forward } from 'lucide-react'
+import { ArrowLeft, User as UserIcon, MessageSquare, Check, X, Forward, XCircle } from 'lucide-react'
 import { applicationAPI, approvalAPI } from '@/services/api'
 import type { Application, ApprovalRecord, User } from '@/types'
 
@@ -101,16 +101,45 @@ const SupervisorApprovalDetail: React.FC = () => {
                 {new Date(application.createdAt).toLocaleString()}
               </p>
             </div>
-            {application.currentNodeName && (
+            {application.status === 'withdrawn' ? (
+              <span className="px-3 py-1 rounded-full text-sm font-medium bg-purple-100 text-purple-700">
+                已撤回
+              </span>
+            ) : application.currentNodeName ? (
               <span className="px-3 py-1 rounded-full text-sm font-medium bg-amber-100 text-amber-700">
                 {application.currentNodeName}
               </span>
-            )}
+            ) : null}
           </div>
           <div className="prose max-w-none">
             <p className="text-gray-700 whitespace-pre-wrap">{application.content}</p>
           </div>
         </div>
+
+        {application.status === 'withdrawn' && (
+          <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 mb-6">
+            <h2 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <XCircle className="w-5 h-5 text-purple-600" />
+              撤回信息
+            </h2>
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-500 w-20">撤回人：</span>
+                <span className="text-sm font-medium text-gray-900">{application.withdrawnByName}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-500 w-20">撤回时间：</span>
+                <span className="text-sm text-gray-900">
+                  {application.withdrawnAt ? new Date(application.withdrawnAt).toLocaleString() : '-'}
+                </span>
+              </div>
+              <div className="flex items-start gap-2">
+                <span className="text-sm text-gray-500 w-20 flex-shrink-0">撤回原因：</span>
+                <p className="text-sm text-gray-900 whitespace-pre-wrap">{application.withdrawReason}</p>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 mb-6">
           <h2 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
@@ -139,6 +168,8 @@ const SupervisorApprovalDetail: React.FC = () => {
                           ? 'bg-green-100 text-green-700'
                           : record.action === 'reject'
                           ? 'bg-red-100 text-red-700'
+                          : record.action === 'withdraw'
+                          ? 'bg-purple-100 text-purple-700'
                           : 'bg-blue-100 text-blue-700'
                       }`}
                     >
@@ -146,6 +177,8 @@ const SupervisorApprovalDetail: React.FC = () => {
                         ? '通过'
                         : record.action === 'reject'
                         ? '退回'
+                        : record.action === 'withdraw'
+                        ? '撤回'
                         : '转交'}
                     </span>
                     <span className="text-xs text-gray-400">
@@ -169,6 +202,7 @@ const SupervisorApprovalDetail: React.FC = () => {
           </div>
         </div>
 
+        {application.status !== 'withdrawn' && (
         <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
           <h2 className="font-semibold text-gray-900 mb-4">处理申请</h2>
 
@@ -244,6 +278,19 @@ const SupervisorApprovalDetail: React.FC = () => {
             </button>
           </div>
         </div>
+        )}
+
+        {application.status === 'withdrawn' && (
+          <div className="bg-purple-50 rounded-xl p-6 border border-purple-200">
+            <div className="flex items-center gap-3">
+              <XCircle className="w-8 h-8 text-purple-500" />
+              <div>
+                <h3 className="font-semibold text-purple-900">此申请已被撤回</h3>
+                <p className="text-sm text-purple-700 mt-1">申请人已主动撤回该申请，无需继续处理</p>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

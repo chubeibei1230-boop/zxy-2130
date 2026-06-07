@@ -1,13 +1,13 @@
 import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FileText, CheckCircle, XCircle, Eye } from 'lucide-react'
+import { FileText, CheckCircle, XCircle, XCircle as WithdrawIcon, Eye } from 'lucide-react'
 import { approvalAPI } from '@/services/api'
 import type { Application } from '@/types'
 
 const SupervisorApprovedList: React.FC = () => {
   const navigate = useNavigate()
   const [applications, setApplications] = useState<Application[]>([])
-  const [filter, setFilter] = useState<'approved' | 'rejected' | ''>('')
+  const [filter, setFilter] = useState<'approved' | 'rejected' | 'withdrawn' | ''>('')
 
   useEffect(() => {
     const fetchData = async () => {
@@ -63,6 +63,16 @@ const SupervisorApprovedList: React.FC = () => {
         >
           已退回
         </button>
+        <button
+          onClick={() => setFilter('withdrawn')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            filter === 'withdrawn'
+              ? 'bg-purple-100 text-purple-700'
+              : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
+          }`}
+        >
+          已撤回
+        </button>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -77,11 +87,14 @@ const SupervisorApprovedList: React.FC = () => {
                 <div className="flex items-center gap-4">
                   <div
                     className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                      app.status === 'approved' ? 'bg-green-100' : 'bg-red-100'
+                      app.status === 'approved' ? 'bg-green-100' :
+                      app.status === 'withdrawn' ? 'bg-purple-100' : 'bg-red-100'
                     }`}
                   >
                     {app.status === 'approved' ? (
                       <CheckCircle className="w-5 h-5 text-green-600" />
+                    ) : app.status === 'withdrawn' ? (
+                      <WithdrawIcon className="w-5 h-5 text-purple-600" />
                     ) : (
                       <XCircle className="w-5 h-5 text-red-600" />
                     )}
@@ -98,10 +111,13 @@ const SupervisorApprovedList: React.FC = () => {
                     className={`px-3 py-1 rounded-full text-xs font-medium ${
                       app.status === 'approved'
                         ? 'bg-green-100 text-green-700'
+                        : app.status === 'withdrawn'
+                        ? 'bg-purple-100 text-purple-700'
                         : 'bg-red-100 text-red-700'
                     }`}
                   >
-                    {app.status === 'approved' ? '已通过' : '已退回'}
+                    {app.status === 'approved' ? '已通过' : 
+                     app.status === 'withdrawn' ? '已撤回' : '已退回'}
                   </span>
                   <Eye className="w-5 h-5 text-gray-400" />
                 </div>
