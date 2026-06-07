@@ -4,8 +4,8 @@ from sqlalchemy.sql import func
 from app.database import get_db
 from typing import List, Optional
 from datetime import datetime
-from app.models import User, Application, Workflow, WorkflowNode, ApprovalRecord, UrgeRecord
-from app.schemas import ApprovalAction
+from app.models import User, Application, Workflow, WorkflowNode, ApprovalRecord, UrgeRecord, SupplementRecord
+from app.schemas import ApprovalAction, SupplementRequest
 from app.auth import require_role, get_current_user
 
 router = APIRouter(prefix="/api/approvals", tags=["approvals"])
@@ -92,6 +92,10 @@ def serialize_application(app: Application, db: Session, include_aging: bool = T
     if app.withdrawn_by:
         withdrawn_by_user = db.query(User).filter(User.id == app.withdrawn_by).first()
 
+    supplement_requested_by_user = None
+    if app.supplement_requested_by:
+        supplement_requested_by_user = db.query(User).filter(User.id == app.supplement_requested_by).first()
+
     result = {
         "id": app.id,
         "workflowId": app.workflow_id,
@@ -113,6 +117,12 @@ def serialize_application(app: Application, db: Session, include_aging: bool = T
         "withdrawnBy": app.withdrawn_by,
         "withdrawnByName": withdrawn_by_user.name if withdrawn_by_user else None,
         "withdrawReason": app.withdraw_reason,
+        "supplementStatus": app.supplement_status,
+        "supplementRequestedBy": app.supplement_requested_by,
+        "supplementRequestedByName": supplement_requested_by_user.name if supplement_requested_by_user else None,
+        "supplementRequestedAt": app.supplement_requested_at.isoformat() if app.supplement_requested_at else None,
+        "supplementRequestNote": app.supplement_request_note,
+        "supplementCount": app.supplement_count or 0,
     }
     
     if include_aging:
@@ -415,3 +425,96 @@ def transfer_application(
     db.refresh(approval_record)
 
     return serialize_record(approval_record, db)
+
+
+@router.post("/{application_id}/request-supplement", response_model=dict)
+def request_supplement(
+    application_id: int,
+    supplement_data: SupplementRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["admin", "supervisor"])),
+):
+    application = db.query(Application).filter(Application.id == application_id).first()
+    if not application:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="申请不存在",
+        )
+
+    if application.status == "withdrawn":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="申请已被撤回，无法处理",
+        )
+
+    if application.status != "pending":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="申请不在待处理状态",
+        )
+
+    if application.supplement_status == "requested":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="该申请已有待处理的补充材料请求",
+        )
+
+    if not supplement_data.note or not supplement_data.note.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="请填写补充材料说明",
+        )
+
+    current_node = None
+    if application.current_node_id:
+        current_node = db.query(WorkflowNode).filter(
+            WorkflowNode.id == application.current_node_id
+        ).first()
+
+    if current_node and current_node.is_paused:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current node is paused",
+        )
+
+    supplement_record = SupplementRecord(
+        application_id=application_id,
+        node_id=application.current_node_id,
+        requested_by=current_user.id,
+        request_note=supplement_data.note.strip(),
+        status="pending",
+    )
+    db.add(supplement_record)
+
+    application.supplement_status = "requested"
+    application.supplement_requested_by = current_user.id
+    application.supplement_requested_at = func.now()
+    application.supplement_request_note = supplement_data.note.strip()
+    application.supplement_count = (application.supplement_count or 0) + 1
+
+    approval_record = ApprovalRecord(
+        application_id=application_id,
+        node_id=application.current_node_id,
+        approver_id=current_user.id,
+        action="supplement",
+        comment=supplement_data.note.strip(),
+    )
+    db.add(approval_record)
+
+    db.commit()
+    db.refresh(supplement_record)
+
+    requested_by = db.query(User).filter(User.id == supplement_record.requested_by).first()
+    node = db.query(WorkflowNode).filter(WorkflowNode.id == supplement_record.node_id).first()
+
+    return {
+        "id": supplement_record.id,
+        "applicationId": supplement_record.application_id,
+        "nodeId": supplement_record.node_id,
+        "nodeName": node.name if node else None,
+        "requestedBy": supplement_record.requested_by,
+        "requestedByName": requested_by.name if requested_by else None,
+        "requestNote": supplement_record.request_note,
+        "requestedAt": supplement_record.requested_at.isoformat() if supplement_record.requested_at else None,
+        "status": supplement_record.status,
+    }

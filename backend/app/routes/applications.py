@@ -4,8 +4,8 @@ from sqlalchemy.sql import func
 from typing import List, Optional
 from datetime import datetime, timedelta
 from app.database import get_db
-from app.models import User, Application, Workflow, WorkflowNode, ApprovalRecord, UrgeRecord
-from app.schemas import ApplicationCreate, ApplicationUpdate, WithdrawRequest
+from app.models import User, Application, Workflow, WorkflowNode, ApprovalRecord, UrgeRecord, SupplementRecord
+from app.schemas import ApplicationCreate, ApplicationUpdate, WithdrawRequest, SupplementSubmit
 from app.auth import get_current_user, require_role
 
 router = APIRouter(prefix="/api/applications", tags=["applications"])
@@ -76,6 +76,10 @@ def serialize_application(app: Application, db: Session, include_aging: bool = F
     if app.original_application_id:
         original_app = db.query(Application).filter(Application.id == app.original_application_id).first()
     
+    supplement_requested_by_user = None
+    if app.supplement_requested_by:
+        supplement_requested_by_user = db.query(User).filter(User.id == app.supplement_requested_by).first()
+
     result = {
         "id": app.id,
         "workflowId": app.workflow_id,
@@ -99,6 +103,12 @@ def serialize_application(app: Application, db: Session, include_aging: bool = F
         "withdrawReason": app.withdraw_reason,
         "originalApplicationId": app.original_application_id,
         "originalApplicationTitle": original_app.title if original_app else None,
+        "supplementStatus": app.supplement_status,
+        "supplementRequestedBy": app.supplement_requested_by,
+        "supplementRequestedByName": supplement_requested_by_user.name if supplement_requested_by_user else None,
+        "supplementRequestedAt": app.supplement_requested_at.isoformat() if app.supplement_requested_at else None,
+        "supplementRequestNote": app.supplement_request_note,
+        "supplementCount": app.supplement_count or 0,
     }
     
     if include_aging:
@@ -742,3 +752,128 @@ def get_withdrawn_stats(
         "totalWithdrawn": total_withdrawn,
         "recentWithdrawn": recent_list,
     }
+
+
+@router.post("/{application_id}/submit-supplement", response_model=dict)
+def submit_supplement(
+    application_id: int,
+    supplement_data: SupplementSubmit,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["admin", "employee"])),
+):
+    application = db.query(Application).filter(Application.id == application_id).first()
+    if not application:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="申请不存在",
+        )
+
+    if application.applicant_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="无权限操作此申请",
+        )
+
+    if application.supplement_status != "requested":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="该申请当前没有待处理的补充材料请求",
+        )
+
+    pending_supplement = (
+        db.query(SupplementRecord)
+        .filter(
+            SupplementRecord.application_id == application_id,
+            SupplementRecord.status == "pending",
+        )
+        .order_by(SupplementRecord.created_at.desc())
+        .first()
+    )
+
+    if not pending_supplement:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="未找到待处理的补充材料记录",
+        )
+
+    if supplement_data.content is not None and supplement_data.content.strip():
+        if application.content:
+            application.content = application.content + "\n\n--- 补充材料 ---\n" + supplement_data.content.strip()
+        else:
+            application.content = supplement_data.content.strip()
+
+    if supplement_data.attachments and len(supplement_data.attachments) > 0:
+        existing_attachments = application.attachments.split(",") if application.attachments else []
+        new_attachments = [a for a in supplement_data.attachments if a and a.strip()]
+        all_attachments = existing_attachments + new_attachments
+        application.attachments = ",".join(all_attachments)
+
+    pending_supplement.submitted_content = supplement_data.content
+    pending_supplement.submitted_attachments = ",".join(supplement_data.attachments) if supplement_data.attachments else None
+    pending_supplement.submitted_at = func.now()
+    pending_supplement.status = "submitted"
+
+    application.supplement_status = "submitted"
+
+    approval_record = ApprovalRecord(
+        application_id=application_id,
+        node_id=application.current_node_id,
+        approver_id=current_user.id,
+        action="supplement_submit",
+        comment="提交了补充材料",
+    )
+    db.add(approval_record)
+
+    db.commit()
+    db.refresh(application)
+
+    return serialize_application(application, db)
+
+
+@router.get("/{application_id}/supplement-records", response_model=List[dict])
+def get_supplement_records(
+    application_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    application = db.query(Application).filter(Application.id == application_id).first()
+    if not application:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Application not found",
+        )
+
+    if current_user.role == "employee" and application.applicant_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied",
+        )
+
+    records = (
+        db.query(SupplementRecord)
+        .filter(SupplementRecord.application_id == application_id)
+        .order_by(SupplementRecord.created_at.asc())
+        .all()
+    )
+
+    result = []
+    for r in records:
+        requested_by = db.query(User).filter(User.id == r.requested_by).first()
+        node = db.query(WorkflowNode).filter(WorkflowNode.id == r.node_id).first()
+
+        result.append({
+            "id": r.id,
+            "applicationId": r.application_id,
+            "nodeId": r.node_id,
+            "nodeName": node.name if node else None,
+            "requestedBy": r.requested_by,
+            "requestedByName": requested_by.name if requested_by else None,
+            "requestNote": r.request_note,
+            "requestedAt": r.requested_at.isoformat() if r.requested_at else None,
+            "submittedContent": r.submitted_content,
+            "submittedAttachments": r.submitted_attachments.split(",") if r.submitted_attachments else [],
+            "submittedAt": r.submitted_at.isoformat() if r.submitted_at else None,
+            "status": r.status,
+        })
+
+    return result

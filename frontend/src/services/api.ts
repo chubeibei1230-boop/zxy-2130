@@ -12,6 +12,7 @@ import {
   UrgeRecord,
   AgingDashboardData,
   WithdrawnStats,
+  SupplementRecord,
 } from '@/types';
 
 const api = axios.create({
@@ -109,6 +110,10 @@ export const applicationAPI = {
     api.post(`/applications/${id}/resubmit`).then((res) => res.data),
   getWithdrawnStats: (): Promise<WithdrawnStats> =>
     api.get('/applications/admin/withdrawn-stats').then((res) => res.data),
+  submitSupplement: (id: number, data: { content?: string; attachments?: string[] }): Promise<Application> =>
+    api.post(`/applications/${id}/submit-supplement`, data).then((res) => res.data),
+  getSupplementRecords: (id: number): Promise<SupplementRecord[]> =>
+    api.get(`/applications/${id}/supplement-records`).then((res) => res.data),
 };
 
 export const approvalAPI = {
@@ -132,6 +137,8 @@ export const approvalAPI = {
     api
       .post(`/approvals/${applicationId}/transfer`, { transferToUserId, comment })
       .then((res) => res.data),
+  requestSupplement: (applicationId: number, note: string): Promise<SupplementRecord> =>
+    api.post(`/approvals/${applicationId}/request-supplement`, { note }).then((res) => res.data),
 };
 
 export default api;

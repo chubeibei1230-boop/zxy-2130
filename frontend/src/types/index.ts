@@ -50,6 +50,32 @@ export interface Workflow {
 
 export type ApplicationStatus = 'draft' | 'pending' | 'approved' | 'rejected' | 'completed' | 'withdrawn';
 
+export type SupplementStatus = 'requested' | 'submitted';
+
+export interface SupplementInfo {
+  supplementStatus?: SupplementStatus;
+  supplementRequestedBy?: number;
+  supplementRequestedByName?: string;
+  supplementRequestedAt?: string;
+  supplementRequestNote?: string;
+  supplementCount: number;
+}
+
+export interface SupplementRecord {
+  id: number;
+  applicationId: number;
+  nodeId: number;
+  nodeName?: string;
+  requestedBy: number;
+  requestedByName?: string;
+  requestNote: string;
+  requestedAt: string;
+  submittedContent?: string;
+  submittedAttachments: string[];
+  submittedAt?: string;
+  status: string;
+}
+
 export interface UrgeInfo {
   urgeCount: number;
   isUrged: boolean;
@@ -101,6 +127,12 @@ export interface Application {
   withdrawReason?: string;
   originalApplicationId?: number;
   originalApplicationTitle?: string;
+  supplementStatus?: SupplementStatus;
+  supplementRequestedBy?: number;
+  supplementRequestedByName?: string;
+  supplementRequestedAt?: string;
+  supplementRequestNote?: string;
+  supplementCount: number;
 }
 
 export interface WithdrawnRecord {
@@ -116,7 +148,7 @@ export interface WithdrawnStats {
   recentWithdrawn: WithdrawnRecord[];
 }
 
-export type ApprovalAction = 'approve' | 'reject' | 'transfer' | 'withdraw';
+export type ApprovalAction = 'approve' | 'reject' | 'transfer' | 'withdraw' | 'supplement' | 'supplement_submit';
 
 export interface ApprovalRecord {
   id: number;

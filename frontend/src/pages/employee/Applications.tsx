@@ -133,6 +133,11 @@ const EmployeeApplications: React.FC = () => {
                       撤回原因：{app.withdrawReason}
                     </span>
                   )}
+                  {app.supplementStatus === 'requested' && (
+                    <span className="px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-700">
+                      待补充材料
+                    </span>
+                  )}
                   <span
                     className={`px-3 py-1 rounded-full text-xs font-medium ${
                       statusLabels[app.status]?.color || 'bg-gray-100 text-gray-700'

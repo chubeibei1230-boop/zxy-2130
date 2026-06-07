@@ -134,6 +134,16 @@ const SupervisorPendingList: React.FC = () => {
                               已催办 {app.urgeInfo.urgeCount} 次
                             </span>
                           )}
+                          {app.supplementStatus === 'requested' && (
+                            <span className="flex items-center gap-1 px-2 py-0.5 bg-orange-100 text-orange-700 rounded text-xs font-medium">
+                              待员工补件
+                            </span>
+                          )}
+                          {app.supplementStatus === 'submitted' && (
+                            <span className="flex items-center gap-1 px-2 py-0.5 bg-cyan-100 text-cyan-700 rounded text-xs font-medium">
+                              已补件待审
+                            </span>
+                          )}
                         </div>
                         <p className="text-sm text-gray-500">
                           申请人：{app.applicantName} · {app.workflowName} ·{' '}

@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, User, MessageSquare, Save, Send, Bell, AlertTriangle, Clock, X, RotateCcw, FileText } from 'lucide-react'
+import { ArrowLeft, User, MessageSquare, Save, Send, Bell, AlertTriangle, Clock, X, RotateCcw, FileText, AlertCircle, Upload } from 'lucide-react'
 import { applicationAPI } from '@/services/api'
-import type { Application, ApprovalRecord, UrgeRecord } from '@/types'
+import type { Application, ApprovalRecord, UrgeRecord, SupplementRecord } from '@/types'
 import { cn } from '@/lib/utils'
 
 const EmployeeApplicationDetail: React.FC = () => {
@@ -11,9 +11,13 @@ const EmployeeApplicationDetail: React.FC = () => {
   const [application, setApplication] = useState<Application | null>(null)
   const [records, setRecords] = useState<ApprovalRecord[]>([])
   const [urgeRecords, setUrgeRecords] = useState<UrgeRecord[]>([])
+  const [supplementRecords, setSupplementRecords] = useState<SupplementRecord[]>([])
   const [content, setContent] = useState('')
   const [attachmentsText, setAttachmentsText] = useState('')
+  const [supplementContent, setSupplementContent] = useState('')
+  const [supplementAttachmentsText, setSupplementAttachmentsText] = useState('')
   const [saving, setSaving] = useState(false)
+  const [submittingSupplement, setSubmittingSupplement] = useState(false)
   const [urging, setUrging] = useState(false)
   const [urgeMessage, setUrgeMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [, setTick] = useState(0)
@@ -52,16 +56,18 @@ const EmployeeApplicationDetail: React.FC = () => {
     if (!id) return
     const fetchData = async () => {
       try {
-        const [app, recs, urgeRecs] = await Promise.all([
+        const [app, recs, urgeRecs, suppRecs] = await Promise.all([
           applicationAPI.getApplication(parseInt(id)),
           applicationAPI.getApprovalRecords(parseInt(id)),
           applicationAPI.getUrgeRecords(parseInt(id)),
+          applicationAPI.getSupplementRecords(parseInt(id)),
         ])
         setApplication(app)
         setContent(app.content || '')
         setAttachmentsText((app.attachments || []).join('\n'))
         setRecords(recs)
         setUrgeRecords(urgeRecs)
+        setSupplementRecords(suppRecs)
       } catch (err) {
         console.error('Failed to fetch data', err)
       }
@@ -134,6 +140,38 @@ const EmployeeApplicationDetail: React.FC = () => {
     }
   }
 
+  const handleSubmitSupplement = async () => {
+    if (!id) return
+    setSubmittingSupplement(true)
+    setActionMessage(null)
+    try {
+      const app = await applicationAPI.submitSupplement(parseInt(id), {
+        content: supplementContent.trim() || undefined,
+        attachments: supplementAttachmentsText
+          .split('\n')
+          .map((item) => item.trim())
+          .filter(Boolean),
+      })
+      setApplication(app)
+      setSupplementContent('')
+      setSupplementAttachmentsText('')
+      setActionMessage({ type: 'success', text: '补充材料已提交，正在等待审批人处理' })
+      const [recs, suppRecs] = await Promise.all([
+        applicationAPI.getApprovalRecords(parseInt(id)),
+        applicationAPI.getSupplementRecords(parseInt(id)),
+      ])
+      setRecords(recs)
+      setSupplementRecords(suppRecs)
+    } catch (err: any) {
+      setActionMessage({
+        type: 'error',
+        text: err.response?.data?.detail || '提交补充材料失败，请稍后重试',
+      })
+    } finally {
+      setSubmittingSupplement(false)
+    }
+  }
+
   if (!application) {
     return (
       <div className="p-8 flex items-center justify-center">
@@ -159,6 +197,7 @@ const EmployeeApplicationDetail: React.FC = () => {
   }
 
   const canSupplement = application.status === 'draft' || application.status === 'rejected'
+  const needsSupplement = application.supplementStatus === 'requested'
   const canWithdraw = application.status === 'pending'
   const canResubmit = ['withdrawn', 'rejected', 'completed'].includes(application.status)
 
@@ -207,17 +246,33 @@ const EmployeeApplicationDetail: React.FC = () => {
                 {new Date(application.createdAt).toLocaleString()}
               </p>
             </div>
-            <span
-              className={`px-3 py-1 rounded-full text-sm font-medium ${
-                statusColors[application.status] || 'bg-gray-100 text-gray-700'
-              }`}
-            >
-              {statusLabels[application.status] || application.status}
-            </span>
+            <div className="flex flex-col items-end gap-2">
+              <span
+                className={`px-3 py-1 rounded-full text-sm font-medium ${
+                  statusColors[application.status] || 'bg-gray-100 text-gray-700'
+                }`}
+              >
+                {statusLabels[application.status] || application.status}
+              </span>
+              {needsSupplement && (
+                <span className="px-3 py-1 rounded-full text-sm font-medium bg-orange-100 text-orange-700 flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" />
+                  待补充材料
+                </span>
+              )}
+            </div>
           </div>
           <div className="prose max-w-none">
             <p className="text-gray-700 whitespace-pre-wrap">{application.content}</p>
           </div>
+          {application.supplementCount > 0 && (
+            <div className="mt-4 pt-4 border-t border-gray-100">
+              <p className="text-sm text-gray-500 flex items-center gap-2">
+                <FileText className="w-4 h-4" />
+                补件次数：<span className="font-medium text-orange-600">{application.supplementCount}</span> 次
+              </p>
+            </div>
+          )}
           {application.attachments.length > 0 && (
             <div className="mt-4 pt-4 border-t border-gray-100">
               <p className="text-sm font-medium text-gray-700 mb-2">附件/补充材料</p>
@@ -252,6 +307,132 @@ const EmployeeApplicationDetail: React.FC = () => {
               : "bg-red-50 border border-red-200 text-red-700"
           )}>
             {actionMessage.text}
+          </div>
+        )}
+
+        {needsSupplement && (
+          <div className="bg-orange-50 rounded-xl p-6 shadow-sm border border-orange-200 mb-6">
+            <h2 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <AlertCircle className="w-5 h-5 text-orange-600" />
+              待补充材料
+            </h2>
+            <div className="space-y-3 mb-6">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-500 w-24">发起补件人：</span>
+                <span className="text-sm font-medium text-gray-900">{application.supplementRequestedByName}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-500 w-24">发起时间：</span>
+                <span className="text-sm text-gray-900">
+                  {application.supplementRequestedAt ? new Date(application.supplementRequestedAt).toLocaleString() : '-'}
+                </span>
+              </div>
+              <div className="flex items-start gap-2">
+                <span className="text-sm text-gray-500 w-24 flex-shrink-0">补件要求：</span>
+                <p className="text-sm text-gray-900 whitespace-pre-wrap bg-white p-3 rounded-lg border border-orange-200 flex-1">
+                  {application.supplementRequestNote}
+                </p>
+              </div>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  补充说明
+                </label>
+                <textarea
+                  value={supplementContent}
+                  onChange={(e) => setSupplementContent(e.target.value)}
+                  placeholder="请输入补充说明内容..."
+                  rows={4}
+                  className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none resize-none bg-white"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  补充附件/材料链接
+                </label>
+                <textarea
+                  value={supplementAttachmentsText}
+                  onChange={(e) => setSupplementAttachmentsText(e.target.value)}
+                  placeholder="每行填写一个材料链接或文件说明"
+                  rows={3}
+                  className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none resize-none bg-white"
+                />
+              </div>
+              <button
+                onClick={handleSubmitSupplement}
+                disabled={submittingSupplement}
+                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors font-medium disabled:opacity-50"
+              >
+                <Upload className="w-5 h-5" />
+                {submittingSupplement ? '提交中...' : '提交补充材料'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {supplementRecords.length > 0 && (
+          <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 mb-6">
+            <h2 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <FileText className="w-5 h-5 text-orange-500" />
+              补件记录
+            </h2>
+            <div className="space-y-4">
+              {supplementRecords.map((record, idx) => (
+                <div key={record.id} className="flex gap-4">
+                  <div className="flex flex-col items-center">
+                    <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center">
+                      <FileText className="w-4 h-4 text-orange-600" />
+                    </div>
+                    {idx < supplementRecords.length - 1 && (
+                      <div className="w-0.5 h-full bg-gray-200 mt-2" />
+                    )}
+                  </div>
+                  <div className="flex-1 pb-4">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="font-medium text-gray-900">
+                        {record.requestedByName}
+                      </span>
+                      <span className="px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-700">
+                        要求补件
+                      </span>
+                      <span className="text-xs text-gray-400">
+                        {new Date(record.requestedAt).toLocaleString()}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-600 mb-2">补件要求：{record.requestNote}</p>
+                    {record.status === 'submitted' && (
+                      <div className="bg-cyan-50 border border-cyan-100 rounded-lg p-3">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-xs font-medium text-cyan-700">
+                            于 {record.submittedAt ? new Date(record.submittedAt).toLocaleString() : '-'} 提交补充
+                          </span>
+                        </div>
+                        {record.submittedContent && (
+                          <p className="text-sm text-gray-600">补充说明：{record.submittedContent}</p>
+                        )}
+                        {record.submittedAttachments.length > 0 && (
+                          <div className="mt-2">
+                            <p className="text-xs text-gray-500 mb-1">补充附件：</p>
+                            {record.submittedAttachments.map((att, i) => (
+                              <p key={i} className="text-sm text-primary-600 break-all">
+                                {att}
+                              </p>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {record.status === 'pending' && (
+                      <p className="text-xs text-orange-600 flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3" />
+                        待提交补充材料
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
@@ -522,6 +703,10 @@ const EmployeeApplicationDetail: React.FC = () => {
                           ? 'bg-red-100 text-red-700'
                           : record.action === 'withdraw'
                           ? 'bg-purple-100 text-purple-700'
+                          : record.action === 'supplement'
+                          ? 'bg-orange-100 text-orange-700'
+                          : record.action === 'supplement_submit'
+                          ? 'bg-cyan-100 text-cyan-700'
                           : 'bg-blue-100 text-blue-700'
                       }`}
                     >
@@ -531,6 +716,10 @@ const EmployeeApplicationDetail: React.FC = () => {
                         ? '退回'
                         : record.action === 'withdraw'
                         ? '撤回'
+                        : record.action === 'supplement'
+                        ? '要求补充材料'
+                        : record.action === 'supplement_submit'
+                        ? '提交补充材料'
                         : '转交'}
                     </span>
                     <span className="text-xs text-gray-400">

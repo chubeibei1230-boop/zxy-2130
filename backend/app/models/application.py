@@ -24,8 +24,15 @@ class Application(Base):
     withdraw_reason = Column(Text)
     original_application_id = Column(Integer, ForeignKey("applications.id"))
 
+    supplement_status = Column(String(20), default=None)
+    supplement_requested_by = Column(Integer, ForeignKey("users.id"))
+    supplement_requested_at = Column(DateTime(timezone=True))
+    supplement_request_note = Column(Text)
+    supplement_count = Column(Integer, default=0)
+
     approval_records = relationship("ApprovalRecord", back_populates="application", cascade="all, delete-orphan")
     urge_records = relationship("UrgeRecord", back_populates="application", cascade="all, delete-orphan")
+    supplement_records = relationship("SupplementRecord", back_populates="application", cascade="all, delete-orphan")
 
 
 class ApprovalRecord(Base):
@@ -55,3 +62,22 @@ class UrgeRecord(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     application = relationship("Application", back_populates="urge_records")
+
+
+class SupplementRecord(Base):
+    __tablename__ = "supplement_records"
+
+    id = Column(Integer, primary_key=True, index=True)
+    application_id = Column(Integer, ForeignKey("applications.id", ondelete="CASCADE"), nullable=False)
+    node_id = Column(Integer, ForeignKey("workflow_nodes.id"), nullable=False)
+    requested_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    request_note = Column(Text, nullable=False)
+    requested_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    submitted_content = Column(Text)
+    submitted_attachments = Column(Text)
+    submitted_at = Column(DateTime(timezone=True))
+    
+    status = Column(String(20), nullable=False, default="pending")
+
+    application = relationship("Application", back_populates="supplement_records")

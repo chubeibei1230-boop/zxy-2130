@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
-import { Workflow, Users, FileText, CheckCircle, XCircle } from 'lucide-react'
+import { Workflow, Users, FileText, CheckCircle, XCircle, RefreshCw } from 'lucide-react'
 import { workflowAPI, applicationAPI, userAPI } from '@/services/api'
-import type { WithdrawnRecord } from '@/types'
+import type { WithdrawnRecord, Application } from '@/types'
 
 const AdminDashboard: React.FC = () => {
   const [stats, setStats] = useState({
@@ -10,8 +10,10 @@ const AdminDashboard: React.FC = () => {
     applications: 0,
     completed: 0,
     withdrawn: 0,
+    supplementCount: 0,
+    pendingSupplement: 0,
   })
-  const [recentApps, setRecentApps] = useState<any[]>([])
+  const [recentApps, setRecentApps] = useState<Application[]>([])
   const [recentWithdrawn, setRecentWithdrawn] = useState<WithdrawnRecord[]>([])
 
   useEffect(() => {
@@ -23,12 +25,16 @@ const AdminDashboard: React.FC = () => {
           applicationAPI.getApplications(),
           applicationAPI.getWithdrawnStats(),
         ])
+        const totalSupplements = applications.reduce((sum, app) => sum + (app.supplementCount || 0), 0)
+        const pendingSupplements = applications.filter((a) => a.supplementStatus === 'requested').length
         setStats({
           workflows: workflows.length,
           users: users.length,
           applications: applications.length,
           completed: applications.filter((a) => a.status === 'completed').length,
           withdrawn: withdrawnStats.totalWithdrawn,
+          supplementCount: totalSupplements,
+          pendingSupplement: pendingSupplements,
         })
         setRecentApps(applications.slice(0, 5))
         setRecentWithdrawn(withdrawnStats.recentWithdrawn)
@@ -45,6 +51,8 @@ const AdminDashboard: React.FC = () => {
     { label: '申请总数', value: stats.applications, icon: FileText, color: 'bg-amber-500' },
     { label: '已完成', value: stats.completed, icon: CheckCircle, color: 'bg-emerald-500' },
     { label: '已撤回', value: stats.withdrawn, icon: XCircle, color: 'bg-purple-500' },
+    { label: '补件总次数', value: stats.supplementCount, icon: RefreshCw, color: 'bg-orange-500' },
+    { label: '待补件申请', value: stats.pendingSupplement, icon: RefreshCw, color: 'bg-cyan-500' },
   ]
 
   return (
@@ -84,26 +92,43 @@ const AdminDashboard: React.FC = () => {
               >
                 <div>
                   <p className="font-medium text-gray-900">{app.title}</p>
-                  <p className="text-sm text-gray-500">{app.applicantName}</p>
+                  <p className="text-sm text-gray-500">
+                    {app.applicantName}
+                    {app.supplementCount > 0 && (
+                      <span className="ml-2 text-orange-600">补件 {app.supplementCount} 次</span>
+                    )}
+                  </p>
                 </div>
-                <span
-                  className={`px-3 py-1 rounded-full text-xs font-medium ${
-                    app.status === 'completed'
-                      ? 'bg-green-100 text-green-700'
-                      : app.status === 'pending'
-                      ? 'bg-amber-100 text-amber-700'
-                      : app.status === 'rejected'
-                      ? 'bg-red-100 text-red-700'
-                      : app.status === 'withdrawn'
-                      ? 'bg-purple-100 text-purple-700'
-                      : 'bg-gray-100 text-gray-700'
-                  }`}
-                >
-                  {app.status === 'completed' ? '已完成' :
-                   app.status === 'pending' ? '审批中' :
-                   app.status === 'rejected' ? '已退回' :
-                   app.status === 'withdrawn' ? '已撤回' : app.status}
-                </span>
+                <div className="flex items-center gap-2">
+                  {app.supplementStatus === 'requested' && (
+                    <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-700">
+                      待补件
+                    </span>
+                  )}
+                  {app.supplementStatus === 'submitted' && (
+                    <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-cyan-100 text-cyan-700">
+                      已补件
+                    </span>
+                  )}
+                  <span
+                    className={`px-3 py-1 rounded-full text-xs font-medium ${
+                      app.status === 'completed'
+                        ? 'bg-green-100 text-green-700'
+                        : app.status === 'pending'
+                        ? 'bg-amber-100 text-amber-700'
+                        : app.status === 'rejected'
+                        ? 'bg-red-100 text-red-700'
+                        : app.status === 'withdrawn'
+                        ? 'bg-purple-100 text-purple-700'
+                        : 'bg-gray-100 text-gray-700'
+                    }`}
+                  >
+                    {app.status === 'completed' ? '已完成' :
+                     app.status === 'pending' ? '审批中' :
+                     app.status === 'rejected' ? '已退回' :
+                     app.status === 'withdrawn' ? '已撤回' : app.status}
+                  </span>
+                </div>
               </div>
             ))}
             {recentApps.length === 0 && (

@@ -14,6 +14,9 @@ from app.schemas.application import (
     ApprovalRecord,
     ApprovalAction,
     WithdrawRequest,
+    SupplementRequest,
+    SupplementSubmit,
+    SupplementRecord,
 )
 from app.schemas.common import Token, TokenData
 
@@ -34,6 +37,9 @@ __all__ = [
     "ApprovalRecord",
     "ApprovalAction",
     "WithdrawRequest",
+    "SupplementRequest",
+    "SupplementSubmit",
+    "SupplementRecord",
     "Token",
     "TokenData",
 ]

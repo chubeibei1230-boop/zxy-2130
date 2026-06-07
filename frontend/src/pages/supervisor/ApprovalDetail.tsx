@@ -1,32 +1,37 @@
 import React, { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, User as UserIcon, MessageSquare, Check, X, Forward, XCircle } from 'lucide-react'
+import { ArrowLeft, User as UserIcon, MessageSquare, Check, X, Forward, XCircle, FileText, AlertCircle } from 'lucide-react'
 import { applicationAPI, approvalAPI } from '@/services/api'
-import type { Application, ApprovalRecord, User } from '@/types'
+import type { Application, ApprovalRecord, User, SupplementRecord } from '@/types'
 
 const SupervisorApprovalDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const [application, setApplication] = useState<Application | null>(null)
   const [records, setRecords] = useState<ApprovalRecord[]>([])
+  const [supplementRecords, setSupplementRecords] = useState<SupplementRecord[]>([])
   const [users, setUsers] = useState<User[]>([])
   const [comment, setComment] = useState('')
   const [transferTo, setTransferTo] = useState('')
   const [showTransfer, setShowTransfer] = useState(false)
+  const [showSupplementModal, setShowSupplementModal] = useState(false)
+  const [supplementNote, setSupplementNote] = useState('')
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
     if (!id) return
     const fetchData = async () => {
       try {
-        const [app, recs, usrs] = await Promise.all([
+        const [app, recs, usrs, suppRecs] = await Promise.all([
           applicationAPI.getApplication(parseInt(id)),
           applicationAPI.getApprovalRecords(parseInt(id)),
           approvalAPI.getTransferUsers(),
+          applicationAPI.getSupplementRecords(parseInt(id)),
         ])
         setApplication(app)
         setRecords(recs)
         setUsers(usrs.filter((u) => u.role === 'supervisor' || u.role === 'admin'))
+        setSupplementRecords(suppRecs)
       } catch (err) {
         console.error('Failed to fetch data', err)
       }
@@ -73,6 +78,28 @@ const SupervisorApprovalDetail: React.FC = () => {
     }
   }
 
+  const handleRequestSupplement = async () => {
+    if (!id || !supplementNote.trim()) return
+    setLoading(true)
+    try {
+      await approvalAPI.requestSupplement(parseInt(id), supplementNote.trim())
+      const [app, recs, suppRecs] = await Promise.all([
+        applicationAPI.getApplication(parseInt(id)),
+        applicationAPI.getApprovalRecords(parseInt(id)),
+        applicationAPI.getSupplementRecords(parseInt(id)),
+      ])
+      setApplication(app)
+      setRecords(recs)
+      setSupplementRecords(suppRecs)
+      setShowSupplementModal(false)
+      setSupplementNote('')
+    } catch (err) {
+      console.error('Failed to request supplement', err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   if (!application) {
     return (
       <div className="p-8 flex items-center justify-center">
@@ -114,7 +141,99 @@ const SupervisorApprovalDetail: React.FC = () => {
           <div className="prose max-w-none">
             <p className="text-gray-700 whitespace-pre-wrap">{application.content}</p>
           </div>
+          {application.supplementCount > 0 && (
+            <div className="mt-4 pt-4 border-t border-gray-100">
+              <p className="text-sm text-gray-500 flex items-center gap-2">
+                <FileText className="w-4 h-4" />
+                补件次数：<span className="font-medium text-orange-600">{application.supplementCount}</span> 次
+              </p>
+            </div>
+          )}
         </div>
+
+        {application.supplementStatus === 'requested' && (
+          <div className="bg-orange-50 rounded-xl p-6 shadow-sm border border-orange-200 mb-6">
+            <div className="flex items-center gap-3">
+              <AlertCircle className="w-8 h-8 text-orange-500" />
+              <div>
+                <h3 className="font-semibold text-orange-900">等待员工补充材料</h3>
+                <p className="text-sm text-orange-700 mt-1">
+                  已要求员工于 {application.supplementRequestedAt ? new Date(application.supplementRequestedAt).toLocaleString() : '-'} 补充材料
+                </p>
+                {application.supplementRequestNote && (
+                  <p className="text-sm text-orange-800 mt-2 bg-orange-100 p-3 rounded-lg">
+                    补件要求：{application.supplementRequestNote}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {supplementRecords.length > 0 && (
+          <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 mb-6">
+            <h2 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <FileText className="w-5 h-5 text-orange-500" />
+              补件记录
+            </h2>
+            <div className="space-y-4">
+              {supplementRecords.map((record, idx) => (
+                <div key={record.id} className="flex gap-4">
+                  <div className="flex flex-col items-center">
+                    <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center">
+                      <FileText className="w-4 h-4 text-orange-600" />
+                    </div>
+                    {idx < supplementRecords.length - 1 && (
+                      <div className="w-0.5 h-full bg-gray-200 mt-2" />
+                    )}
+                  </div>
+                  <div className="flex-1 pb-4">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="font-medium text-gray-900">
+                        {record.requestedByName}
+                      </span>
+                      <span className="px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-700">
+                        要求补件
+                      </span>
+                      <span className="text-xs text-gray-400">
+                        {new Date(record.requestedAt).toLocaleString()}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-600 mb-2">补件要求：{record.requestNote}</p>
+                    {record.status === 'submitted' && (
+                      <div className="bg-cyan-50 border border-cyan-100 rounded-lg p-3">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-xs font-medium text-cyan-700">
+                            员工于 {record.submittedAt ? new Date(record.submittedAt).toLocaleString() : '-'} 提交补充
+                          </span>
+                        </div>
+                        {record.submittedContent && (
+                          <p className="text-sm text-gray-600">补充说明：{record.submittedContent}</p>
+                        )}
+                        {record.submittedAttachments.length > 0 && (
+                          <div className="mt-2">
+                            <p className="text-xs text-gray-500 mb-1">补充附件：</p>
+                            {record.submittedAttachments.map((att, i) => (
+                              <p key={i} className="text-sm text-primary-600 break-all">
+                                {att}
+                              </p>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {record.status === 'pending' && (
+                      <p className="text-xs text-orange-600 flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3" />
+                        等待员工提交补充材料
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {application.status === 'withdrawn' && (
           <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 mb-6">
@@ -170,6 +289,10 @@ const SupervisorApprovalDetail: React.FC = () => {
                           ? 'bg-red-100 text-red-700'
                           : record.action === 'withdraw'
                           ? 'bg-purple-100 text-purple-700'
+                          : record.action === 'supplement'
+                          ? 'bg-orange-100 text-orange-700'
+                          : record.action === 'supplement_submit'
+                          ? 'bg-cyan-100 text-cyan-700'
                           : 'bg-blue-100 text-blue-700'
                       }`}
                     >
@@ -179,6 +302,10 @@ const SupervisorApprovalDetail: React.FC = () => {
                         ? '退回'
                         : record.action === 'withdraw'
                         ? '撤回'
+                        : record.action === 'supplement'
+                        ? '要求补充材料'
+                        : record.action === 'supplement_submit'
+                        ? '提交补充材料'
                         : '转交'}
                     </span>
                     <span className="text-xs text-gray-400">
@@ -245,7 +372,7 @@ const SupervisorApprovalDetail: React.FC = () => {
                 setShowTransfer(false)
                 handleApprove()
               }}
-              disabled={loading}
+              disabled={loading || application.supplementStatus === 'requested'}
               className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium disabled:opacity-50"
             >
               <Check className="w-5 h-5" />
@@ -256,7 +383,7 @@ const SupervisorApprovalDetail: React.FC = () => {
                 setShowTransfer(false)
                 handleReject()
               }}
-              disabled={loading}
+              disabled={loading || application.supplementStatus === 'requested'}
               className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium disabled:opacity-50"
             >
               <X className="w-5 h-5" />
@@ -270,11 +397,22 @@ const SupervisorApprovalDetail: React.FC = () => {
                 }
                 handleTransfer()
               }}
-              disabled={loading}
+              disabled={loading || application.supplementStatus === 'requested'}
               className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50"
             >
               <Forward className="w-5 h-5" />
               转交
+            </button>
+            <button
+              onClick={() => {
+                setShowTransfer(false)
+                setShowSupplementModal(true)
+              }}
+              disabled={loading || application.supplementStatus === 'requested'}
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors font-medium disabled:opacity-50"
+            >
+              <FileText className="w-5 h-5" />
+              补充材料
             </button>
           </div>
         </div>

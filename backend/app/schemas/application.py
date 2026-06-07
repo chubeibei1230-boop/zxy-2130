@@ -60,3 +60,30 @@ class ApprovalRecord(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class SupplementRequest(BaseModel):
+    note: str
+
+
+class SupplementSubmit(BaseModel):
+    content: Optional[str] = None
+    attachments: Optional[List[str]] = []
+
+
+class SupplementRecord(BaseModel):
+    id: int
+    applicationId: int
+    nodeId: int
+    nodeName: Optional[str] = None
+    requestedBy: int
+    requestedByName: Optional[str] = None
+    requestNote: str
+    requestedAt: datetime
+    submittedContent: Optional[str] = None
+    submittedAttachments: Optional[List[str]] = []
+    submittedAt: Optional[datetime] = None
+    status: str
+
+    class Config:
+        from_attributes = True
