@@ -279,25 +279,40 @@ def urge_application(
     if not application:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Application not found",
+            detail="申请不存在",
         )
 
     if application.applicant_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied",
+            detail="无权限操作此申请",
         )
 
     if application.status != "pending":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Can only urge pending applications",
+            detail="只能对审批中的申请发起催办",
         )
 
     if not application.current_node_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Application has no current node",
+            detail="申请当前无审批节点",
+        )
+
+    if not application.current_node_entered_at:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="无法确定节点进入时间，请稍后再试",
+        )
+
+    min_wait_hours = 2
+    hours_since_entered = (datetime.utcnow() - application.current_node_entered_at.replace(tzinfo=None)).total_seconds() / 3600
+    if hours_since_entered < min_wait_hours:
+        remaining = round(min_wait_hours - hours_since_entered, 1)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"进入当前节点未满{min_wait_hours}小时，请{remaining}小时后再催办",
         )
 
     one_hour_ago = datetime.utcnow() - timedelta(hours=1)
@@ -313,7 +328,7 @@ def urge_application(
     if recent_urge:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Can only urge once per hour for the same node",
+            detail="同一节点每小时只能催办一次，请稍后再试",
         )
 
     urge_record = UrgeRecord(
@@ -443,8 +458,16 @@ def get_aging_dashboard(
 
     total_pending = 0
     total_timeout = 0
-    total_urged = 0
+    total_urge_count = 0
     total_near_timeout = 0
+
+    time_distribution = {
+        "under1h": 0,
+        "1to4h": 0,
+        "4to12h": 0,
+        "12to24h": 0,
+        "over24h": 0,
+    }
 
     for workflow in workflows:
         apps = db.query(Application).filter(
@@ -454,21 +477,38 @@ def get_aging_dashboard(
 
         timeout_count = 0
         near_timeout_count = 0
-        urged_count = 0
+        urge_total_count = 0
         elapsed_hours_list = []
 
         for app in apps:
             aging = get_aging_info(app, db)
-            urge = get_urge_info(app, db)
             
             if aging.get("isTimeout"):
                 timeout_count += 1
             if aging.get("isNearTimeout"):
                 near_timeout_count += 1
-            if urge.get("isUrged"):
-                urged_count += 1
+            
+            app_urge_count = (
+                db.query(UrgeRecord)
+                .filter(UrgeRecord.application_id == app.id)
+                .count()
+            )
+            urge_total_count += app_urge_count
+            
             if aging.get("elapsedHours") is not None:
-                elapsed_hours_list.append(aging["elapsedHours"])
+                elapsed = aging["elapsedHours"]
+                elapsed_hours_list.append(elapsed)
+                
+                if elapsed < 1:
+                    time_distribution["under1h"] += 1
+                elif elapsed < 4:
+                    time_distribution["1to4h"] += 1
+                elif elapsed < 12:
+                    time_distribution["4to12h"] += 1
+                elif elapsed < 24:
+                    time_distribution["12to24h"] += 1
+                else:
+                    time_distribution["over24h"] += 1
 
         avg_elapsed = round(sum(elapsed_hours_list) / len(elapsed_hours_list), 1) if elapsed_hours_list else 0
         
@@ -479,13 +519,13 @@ def get_aging_dashboard(
             "pendingCount": len(apps),
             "timeoutCount": timeout_count,
             "nearTimeoutCount": near_timeout_count,
-            "urgedCount": urged_count,
+            "urgeCount": urge_total_count,
             "avgElapsedHours": avg_elapsed,
         })
 
         total_pending += len(apps)
         total_timeout += timeout_count
-        total_urged += urged_count
+        total_urge_count += urge_total_count
         total_near_timeout += near_timeout_count
 
     node_bottlenecks = []
@@ -497,6 +537,7 @@ def get_aging_dashboard(
         ).all()
         
         timeout_at_node = 0
+        urge_at_node = 0
         elapsed_list = []
         for app in apps_at_node:
             aging = get_aging_info(app, db)
@@ -504,6 +545,16 @@ def get_aging_dashboard(
                 timeout_at_node += 1
             if aging.get("elapsedHours") is not None:
                 elapsed_list.append(aging["elapsedHours"])
+            
+            node_urge_count = (
+                db.query(UrgeRecord)
+                .filter(
+                    UrgeRecord.application_id == app.id,
+                    UrgeRecord.node_id == node.id,
+                )
+                .count()
+            )
+            urge_at_node += node_urge_count
         
         avg_elapsed = round(sum(elapsed_list) / len(elapsed_list), 1) if elapsed_list else 0
         workflow = db.query(Workflow).filter(Workflow.id == node.workflow_id).first()
@@ -515,6 +566,7 @@ def get_aging_dashboard(
             "workflowName": workflow.name if workflow else None,
             "pendingCount": len(apps_at_node),
             "timeoutCount": timeout_at_node,
+            "urgeCount": urge_at_node,
             "avgElapsedHours": avg_elapsed,
         })
 
@@ -525,8 +577,9 @@ def get_aging_dashboard(
             "totalPending": total_pending,
             "totalTimeout": total_timeout,
             "totalNearTimeout": total_near_timeout,
-            "totalUrged": total_urged,
+            "totalUrgeCount": total_urge_count,
         },
+        "timeDistribution": time_distribution,
         "workflowStats": workflow_stats,
         "nodeBottlenecks": node_bottlenecks,
     }

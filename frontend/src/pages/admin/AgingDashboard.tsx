@@ -9,7 +9,7 @@ import {
   AlertCircle,
 } from 'lucide-react'
 import { applicationAPI } from '@/services/api'
-import type { AgingDashboardData, WorkflowAgingStat, NodeBottleneck } from '@/types'
+import type { AgingDashboardData, WorkflowAgingStat, NodeBottleneck, TimeDistribution } from '@/types'
 import { cn } from '@/lib/utils'
 
 const AdminAgingDashboard: React.FC = () => {
@@ -72,8 +72,8 @@ const AdminAgingDashboard: React.FC = () => {
       textColor: 'text-amber-700',
     },
     {
-      label: '已催办',
-      value: data.summary.totalUrged,
+      label: '催办次数',
+      value: data.summary.totalUrgeCount,
       icon: Bell,
       color: 'bg-orange-500',
       bgColor: 'bg-orange-50',
@@ -86,6 +86,16 @@ const AdminAgingDashboard: React.FC = () => {
     if (pending > 3) return 'bg-amber-500'
     return 'bg-green-500'
   }
+
+  const timeDistributionConfig: { key: keyof TimeDistribution; label: string; color: string }[] = [
+    { key: 'under1h', label: '< 1小时', color: 'bg-green-500' },
+    { key: '1to4h', label: '1-4小时', color: 'bg-blue-500' },
+    { key: '4to12h', label: '4-12小时', color: 'bg-amber-500' },
+    { key: '12to24h', label: '12-24小时', color: 'bg-orange-500' },
+    { key: 'over24h', label: '> 24小时', color: 'bg-red-500' },
+  ]
+
+  const totalDistributed = Object.values(data.timeDistribution).reduce((a, b) => a + b, 0)
 
   return (
     <div className="p-8">
@@ -111,6 +121,49 @@ const AdminAgingDashboard: React.FC = () => {
             </div>
           </div>
         ))}
+      </div>
+
+      <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 mb-8">
+        <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+          <BarChart3 className="w-5 h-5" />
+          处理耗时分布
+        </h2>
+        {totalDistributed > 0 ? (
+          <div className="space-y-4">
+            <div className="space-y-3">
+              {timeDistributionConfig.map((item) => {
+                const count = data.timeDistribution[item.key]
+                const percentage = totalDistributed > 0 ? (count / totalDistributed) * 100 : 0
+                return (
+                  <div key={item.key} className="flex items-center gap-4">
+                    <div className="w-20 text-sm text-gray-600 font-medium">
+                      {item.label}
+                    </div>
+                    <div className="flex-1 h-8 bg-gray-100 rounded-lg overflow-hidden relative">
+                      <div
+                        className={cn("h-full rounded-lg transition-all", item.color)}
+                        style={{ width: `${percentage}%` }}
+                      />
+                      <div className="absolute inset-0 flex items-center px-3">
+                        <span className="text-sm font-medium text-gray-700">
+                          {count} 单
+                        </span>
+                      </div>
+                    </div>
+                    <div className="w-16 text-right text-sm text-gray-500">
+                      {percentage.toFixed(1)}%
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+            <p className="text-xs text-gray-400 text-center pt-2 border-t border-gray-100">
+              共 {totalDistributed} 个待处理申请 · 按当前节点已处理时长统计
+            </p>
+          </div>
+        ) : (
+          <p className="text-gray-400 text-center py-8">暂无耗时分布数据</p>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
@@ -156,10 +209,10 @@ const AdminAgingDashboard: React.FC = () => {
                           超时 <span className="font-medium">{stat.timeoutCount}</span>
                         </span>
                       )}
-                      {stat.urgedCount > 0 && (
+                      {stat.urgeCount > 0 && (
                         <span className="text-orange-600 flex items-center gap-0.5">
                           <Bell className="w-3 h-3" />
-                          {stat.urgedCount}
+                          催办 {stat.urgeCount}
                         </span>
                       )}
                     </div>
@@ -211,6 +264,12 @@ const AdminAgingDashboard: React.FC = () => {
                           <div className="flex items-center gap-1 text-xs text-red-600">
                             <AlertTriangle className="w-3 h-3" />
                             超时 {node.timeoutCount}
+                          </div>
+                        )}
+                        {node.urgeCount > 0 && (
+                          <div className="flex items-center gap-1 text-xs text-orange-600">
+                            <Bell className="w-3 h-3" />
+                            催办 {node.urgeCount}
                           </div>
                         )}
                       </div>

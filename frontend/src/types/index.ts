@@ -130,7 +130,7 @@ export interface WorkflowAgingStat {
   pendingCount: number;
   timeoutCount: number;
   nearTimeoutCount: number;
-  urgedCount: number;
+  urgeCount: number;
   avgElapsedHours: number;
 }
 
@@ -141,18 +141,28 @@ export interface NodeBottleneck {
   workflowName?: string;
   pendingCount: number;
   timeoutCount: number;
+  urgeCount: number;
   avgElapsedHours: number;
+}
+
+export interface TimeDistribution {
+  under1h: number;
+  '1to4h': number;
+  '4to12h': number;
+  '12to24h': number;
+  over24h: number;
 }
 
 export interface AgingDashboardSummary {
   totalPending: number;
   totalTimeout: number;
   totalNearTimeout: number;
-  totalUrged: number;
+  totalUrgeCount: number;
 }
 
 export interface AgingDashboardData {
   summary: AgingDashboardSummary;
+  timeDistribution: TimeDistribution;
   workflowStats: WorkflowAgingStat[];
   nodeBottlenecks: NodeBottleneck[];
 }

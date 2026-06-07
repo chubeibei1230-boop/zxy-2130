@@ -16,6 +16,32 @@ const EmployeeApplicationDetail: React.FC = () => {
   const [saving, setSaving] = useState(false)
   const [urging, setUrging] = useState(false)
   const [urgeMessage, setUrgeMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [, setTick] = useState(0)
+
+  useEffect(() => {
+    const timer = setInterval(() => setTick(t => t + 1), 60000)
+    return () => clearInterval(timer)
+  }, [])
+
+  const MIN_URGE_WAIT_HOURS = 2
+
+  const getUrgeWaitInfo = () => {
+    if (!application?.currentNodeEnteredAt) return { canUrge: false, waitText: '', hoursLeft: 0 }
+    const enteredAt = new Date(application.currentNodeEnteredAt).getTime()
+    const now = Date.now()
+    const hoursPassed = (now - enteredAt) / (1000 * 60 * 60)
+    const hoursLeft = MIN_URGE_WAIT_HOURS - hoursPassed
+    
+    if (hoursPassed >= MIN_URGE_WAIT_HOURS) {
+      return { canUrge: true, waitText: '', hoursLeft: 0 }
+    }
+    
+    const minutesLeft = Math.ceil(hoursLeft * 60)
+    if (minutesLeft < 60) {
+      return { canUrge: false, waitText: `${minutesLeft}分钟后可催办`, hoursLeft }
+    }
+    return { canUrge: false, waitText: `${Math.ceil(hoursLeft)}小时后可催办`, hoursLeft }
+  }
 
   useEffect(() => {
     if (!id) return
@@ -148,66 +174,89 @@ const EmployeeApplicationDetail: React.FC = () => {
           )}
         </div>
 
-        {application.status === 'pending' && (
-          <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 mb-6">
-            <h2 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <Bell className="w-5 h-5" />
-              审批催办
-            </h2>
-            
-            {application.urgeInfo?.isUrged && (
-              <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                <div className="flex items-center gap-2 text-amber-700">
-                  <AlertTriangle className="w-4 h-4" />
-                  <span className="text-sm font-medium">
-                    已发起 {application.urgeInfo.urgeCount} 次催办
-                  </span>
-                </div>
-                {application.urgeInfo.latestUrgeAt && (
-                  <p className="text-xs text-amber-600 mt-1">
-                    最近催办：{new Date(application.urgeInfo.latestUrgeAt).toLocaleString()}
-                    <span className="ml-2 px-1.5 py-0.5 bg-amber-100 rounded text-xs">
-                      {application.urgeInfo.latestUrgeStatus === 'pending' ? '待处理' : '已处理'}
+        {application.status === 'pending' && (() => {
+          const urgeWait = getUrgeWaitInfo()
+          return (
+            <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 mb-6">
+              <h2 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                <Bell className="w-5 h-5" />
+                审批催办
+              </h2>
+              
+              {application.urgeInfo?.isUrged && (
+                <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                  <div className="flex items-center gap-2 text-amber-700">
+                    <AlertTriangle className="w-4 h-4" />
+                    <span className="text-sm font-medium">
+                      已发起 {application.urgeInfo.urgeCount} 次催办
                     </span>
-                  </p>
-                )}
-              </div>
-            )}
+                  </div>
+                  {application.urgeInfo.latestUrgeAt && (
+                    <p className="text-xs text-amber-600 mt-1">
+                      最近催办：{new Date(application.urgeInfo.latestUrgeAt).toLocaleString()}
+                      <span className="ml-2 px-1.5 py-0.5 bg-amber-100 rounded text-xs">
+                        {application.urgeInfo.latestUrgeStatus === 'pending' ? '待处理' : '已处理'}
+                      </span>
+                    </p>
+                  )}
+                </div>
+              )}
 
-            {urgeMessage && (
-              <div className={cn(
-                "mb-4 p-3 rounded-lg text-sm",
-                urgeMessage.type === 'success' 
-                  ? "bg-green-50 border border-green-200 text-green-700"
-                  : "bg-red-50 border border-red-200 text-red-700"
-              )}>
-                {urgeMessage.text}
-              </div>
-            )}
-
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">
-                  当前节点：<span className="font-medium text-gray-900">{application.currentNodeName}</span>
-                </p>
-                {application.currentNodeEnteredAt && (
-                  <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
-                    <Clock className="w-3 h-3" />
-                    进入节点时间：{new Date(application.currentNodeEnteredAt).toLocaleString()}
+              {!urgeWait.canUrge && urgeWait.waitText && (
+                <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="flex items-center gap-2 text-blue-700">
+                    <Clock className="w-4 h-4" />
+                    <span className="text-sm font-medium">
+                      进入节点未满{MIN_URGE_WAIT_HOURS}小时，{urgeWait.waitText}
+                    </span>
+                  </div>
+                  <p className="text-xs text-blue-600 mt-1">
+                    为避免频繁打扰审批人，请耐心等待一段时间后再催办
                   </p>
-                )}
+                </div>
+              )}
+
+              {urgeMessage && (
+                <div className={cn(
+                  "mb-4 p-3 rounded-lg text-sm",
+                  urgeMessage.type === 'success' 
+                    ? "bg-green-50 border border-green-200 text-green-700"
+                    : "bg-red-50 border border-red-200 text-red-700"
+                )}>
+                  {urgeMessage.text}
+                </div>
+              )}
+
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-600">
+                    当前节点：<span className="font-medium text-gray-900">{application.currentNodeName}</span>
+                  </p>
+                  {application.currentNodeEnteredAt && (
+                    <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      进入节点时间：{new Date(application.currentNodeEnteredAt).toLocaleString()}
+                    </p>
+                  )}
+                </div>
+                <button
+                  onClick={handleUrge}
+                  disabled={urging || !urgeWait.canUrge}
+                  className={cn(
+                    "flex items-center gap-2 px-4 py-2 rounded-lg transition-colors",
+                    urgeWait.canUrge
+                      ? "bg-amber-500 text-white hover:bg-amber-600"
+                      : "bg-gray-200 text-gray-400 cursor-not-allowed",
+                    "disabled:opacity-50"
+                  )}
+                >
+                  <Bell className="w-4 h-4" />
+                  {urging ? '催办中...' : urgeWait.canUrge ? '发起催办' : urgeWait.waitText}
+                </button>
               </div>
-              <button
-                onClick={handleUrge}
-                disabled={urging}
-                className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Bell className="w-4 h-4" />
-                {urging ? '催办中...' : '发起催办'}
-              </button>
             </div>
-          </div>
-        )}
+          )
+        })()}
 
         {urgeRecords.length > 0 && (
           <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 mb-6">
