@@ -14,8 +14,15 @@ const SupervisorDashboard: React.FC = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const data = await approvalAPI.getPendingApprovals()
-        setStats((prev) => ({ ...prev, pending: data.length }))
+        const [pending, handled] = await Promise.all([
+          approvalAPI.getPendingApprovals(),
+          approvalAPI.getHandledApprovals(),
+        ])
+        setStats({
+          pending: pending.length,
+          approved: handled.filter((a) => a.status === 'completed' || a.status === 'approved').length,
+          rejected: handled.filter((a) => a.status === 'rejected').length,
+        })
       } catch (err) {
         console.error('Failed to fetch data', err)
       }

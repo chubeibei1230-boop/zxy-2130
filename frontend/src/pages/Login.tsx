@@ -34,7 +34,7 @@ const Login: React.FC = () => {
         employee: '/employee/dashboard',
         supervisor: '/supervisor/dashboard',
       }
-      navigate(redirectMap[role])
+      navigate(redirectMap[response.user.role])
     } catch (err: any) {
       setError(err.response?.data?.detail || '登录失败，请检查用户名和密码')
     } finally {

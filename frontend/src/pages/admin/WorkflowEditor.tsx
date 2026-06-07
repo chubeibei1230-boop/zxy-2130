@@ -1,9 +1,9 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Plus, X, Save } from 'lucide-react'
+import { ArrowLeft, Plus, X } from 'lucide-react'
 import { workflowAPI, nodeAPI } from '@/services/api'
 import ContextMenu from '@/components/ContextMenu'
-import type { Workflow, WorkflowNode, NodeHistory } from '@/types'
+import type { Workflow, NodeHistory } from '@/types'
 
 const AdminWorkflowEditor: React.FC = () => {
   const { id } = useParams<{ id: string }>()
@@ -19,6 +19,8 @@ const AdminWorkflowEditor: React.FC = () => {
   const [showAddNode, setShowAddNode] = useState(false)
   const [newNodeName, setNewNodeName] = useState('')
   const [newNodeType, setNewNodeType] = useState('approval')
+  const [newAssigneeRole, setNewAssigneeRole] = useState('supervisor')
+  const [newTimeoutHours, setNewTimeoutHours] = useState('24')
 
   const fetchWorkflow = useCallback(async () => {
     if (!id) return
@@ -95,6 +97,8 @@ const AdminWorkflowEditor: React.FC = () => {
       await workflowAPI.addNode(parseInt(id), {
         name: newNodeName,
         type: newNodeType as any,
+        assigneeRole: newNodeType === 'approval' ? newAssigneeRole : undefined,
+        timeoutHours: newNodeType === 'approval' && newTimeoutHours ? parseInt(newTimeoutHours) : undefined,
         positionX: 200,
         positionY: 150 + (workflow?.nodes.length || 0) * 80,
         isRequired: true,
@@ -103,6 +107,8 @@ const AdminWorkflowEditor: React.FC = () => {
       })
       setShowAddNode(false)
       setNewNodeName('')
+      setNewAssigneeRole('supervisor')
+      setNewTimeoutHours('24')
       fetchWorkflow()
     } catch (err) {
       console.error('Failed to add node', err)
@@ -194,6 +200,11 @@ const AdminWorkflowEditor: React.FC = () => {
                       时限：{node.timeoutHours}小时
                     </p>
                   )}
+                  {node.assigneeRole && (
+                    <p className="text-xs opacity-80 mt-1">
+                      处理角色：{node.assigneeRole === 'admin' ? '管理员' : '主管'}
+                    </p>
+                  )}
                 </div>
                 {node.type !== 'end' && (
                   <div className="w-0.5 h-8 bg-gray-300" />
@@ -260,6 +271,35 @@ const AdminWorkflowEditor: React.FC = () => {
                   <option value="condition">条件节点</option>
                 </select>
               </div>
+              {newNodeType === 'approval' && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      处理角色
+                    </label>
+                    <select
+                      value={newAssigneeRole}
+                      onChange={(e) => setNewAssigneeRole(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 outline-none"
+                    >
+                      <option value="supervisor">主管</option>
+                      <option value="admin">管理员</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      超时时限（小时）
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={newTimeoutHours}
+                      onChange={(e) => setNewTimeoutHours(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 outline-none"
+                    />
+                  </div>
+                </>
+              )}
               <div className="flex gap-2 pt-2">
                 <button
                   type="submit"

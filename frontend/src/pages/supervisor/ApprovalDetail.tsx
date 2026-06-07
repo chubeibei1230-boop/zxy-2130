@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, User, MessageSquare, Check, X, Forward } from 'lucide-react'
-import { applicationAPI, approvalAPI, userAPI } from '@/services/api'
+import { ArrowLeft, User as UserIcon, MessageSquare, Check, X, Forward } from 'lucide-react'
+import { applicationAPI, approvalAPI } from '@/services/api'
 import type { Application, ApprovalRecord, User } from '@/types'
 
 const SupervisorApprovalDetail: React.FC = () => {
@@ -22,7 +22,7 @@ const SupervisorApprovalDetail: React.FC = () => {
         const [app, recs, usrs] = await Promise.all([
           applicationAPI.getApplication(parseInt(id)),
           applicationAPI.getApprovalRecords(parseInt(id)),
-          userAPI.getUsers(),
+          approvalAPI.getTransferUsers(),
         ])
         setApplication(app)
         setRecords(recs)
@@ -38,7 +38,7 @@ const SupervisorApprovalDetail: React.FC = () => {
     if (!id) return
     setLoading(true)
     try {
-      await approvalAPI.approve(parseInt(id), { comment })
+      await approvalAPI.approve(parseInt(id), comment)
       navigate('/supervisor/pending')
     } catch (err) {
       console.error('Failed to approve', err)
@@ -51,7 +51,7 @@ const SupervisorApprovalDetail: React.FC = () => {
     if (!id) return
     setLoading(true)
     try {
-      await approvalAPI.reject(parseInt(id), { comment })
+      await approvalAPI.reject(parseInt(id), comment)
       navigate('/supervisor/pending')
     } catch (err) {
       console.error('Failed to reject', err)
@@ -64,10 +64,7 @@ const SupervisorApprovalDetail: React.FC = () => {
     if (!id || !transferTo) return
     setLoading(true)
     try {
-      await approvalAPI.transfer(parseInt(id), {
-        transferToUserId: parseInt(transferTo),
-        comment,
-      })
+      await approvalAPI.transfer(parseInt(id), parseInt(transferTo), comment)
       navigate('/supervisor/pending')
     } catch (err) {
       console.error('Failed to transfer', err)
@@ -125,7 +122,7 @@ const SupervisorApprovalDetail: React.FC = () => {
               <div key={record.id} className="flex gap-4">
                 <div className="flex flex-col items-center">
                   <div className="w-8 h-8 bg-primary-100 rounded-full flex items-center justify-center">
-                    <User className="w-4 h-4 text-primary-600" />
+                    <UserIcon className="w-4 h-4 text-primary-600" />
                   </div>
                   {idx < records.length - 1 && (
                     <div className="w-0.5 h-full bg-gray-200 mt-2" />
@@ -233,8 +230,11 @@ const SupervisorApprovalDetail: React.FC = () => {
             </button>
             <button
               onClick={() => {
-                setShowTransfer(true)
-                if (transferTo) handleTransfer()
+                if (!showTransfer) {
+                  setShowTransfer(true)
+                  return
+                }
+                handleTransfer()
               }}
               disabled={loading}
               className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50"

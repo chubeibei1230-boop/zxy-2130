@@ -12,8 +12,8 @@ const SupervisorApprovedList: React.FC = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const data = await approvalAPI.getPendingApprovals()
-        setApplications(data.filter((a) => a.status !== 'pending'))
+        const data = await approvalAPI.getHandledApprovals()
+        setApplications(data)
       } catch (err) {
         console.error('Failed to fetch data', err)
       }

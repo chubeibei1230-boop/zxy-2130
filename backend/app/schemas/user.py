@@ -24,7 +24,7 @@ class UserUpdate(BaseModel):
 class UserLogin(BaseModel):
     username: str
     password: str
-    role: str
+    role: Optional[str] = None
 
 
 class User(UserBase):

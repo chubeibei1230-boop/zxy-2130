@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Workflow, Users, FileText, CheckCircle, TrendingUp } from 'lucide-react'
+import { Workflow, Users, FileText, CheckCircle } from 'lucide-react'
 import { workflowAPI, applicationAPI, userAPI } from '@/services/api'
 
 const AdminDashboard: React.FC = () => {

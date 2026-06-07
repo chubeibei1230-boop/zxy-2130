@@ -83,7 +83,7 @@ def update_user(
         db_user.role = user_data.role
     if user_data.department is not None:
         db_user.department = user_data.department
-    if user_data.password is not None:
+    if user_data.password:
         db_user.password_hash = get_password_hash(user_data.password)
 
     db.commit()

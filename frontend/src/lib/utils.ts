@@ -1,6 +1,19 @@
-import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
 
+type ClassValue = string | number | false | null | undefined | Record<string, boolean>
+
 export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs))
+  const classes = inputs
+    .flatMap((input) => {
+      if (!input) return []
+      if (typeof input === 'object') {
+        return Object.entries(input)
+          .filter(([, enabled]) => enabled)
+          .map(([name]) => name)
+      }
+      return [String(input)]
+    })
+    .join(' ')
+
+  return twMerge(classes)
 }

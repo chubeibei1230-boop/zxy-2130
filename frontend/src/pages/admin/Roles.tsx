@@ -38,7 +38,8 @@ const AdminRoles: React.FC = () => {
     e.preventDefault()
     try {
       if (editingId) {
-        await userAPI.updateUser(editingId, form)
+        const { password, ...userData } = form
+        await userAPI.updateUser(editingId, password ? form : userData)
       } else {
         await userAPI.createUser(form)
       }

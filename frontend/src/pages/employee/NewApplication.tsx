@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Send, FileText } from 'lucide-react'
+import { ArrowLeft, Send } from 'lucide-react'
 import { applicationAPI, workflowAPI } from '@/services/api'
 import type { Workflow } from '@/types'
 
@@ -10,6 +10,7 @@ const EmployeeNewApplication: React.FC = () => {
   const [selectedWorkflow, setSelectedWorkflow] = useState('')
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
+  const [attachmentsText, setAttachmentsText] = useState('')
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
@@ -34,7 +35,10 @@ const EmployeeNewApplication: React.FC = () => {
         workflowId: parseInt(selectedWorkflow),
         title,
         content,
-        attachments: [],
+        attachments: attachmentsText
+          .split('\n')
+          .map((item) => item.trim())
+          .filter(Boolean),
       })
       await applicationAPI.submitApplication(app.id)
       navigate('/employee/applications')
@@ -102,6 +106,19 @@ const EmployeeNewApplication: React.FC = () => {
                 onChange={(e) => setContent(e.target.value)}
                 placeholder="请详细描述申请内容..."
                 rows={6}
+                className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 outline-none resize-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                附件/补充材料链接
+              </label>
+              <textarea
+                value={attachmentsText}
+                onChange={(e) => setAttachmentsText(e.target.value)}
+                placeholder="每行填写一个材料链接或文件说明"
+                rows={3}
                 className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 outline-none resize-none"
               />
             </div>

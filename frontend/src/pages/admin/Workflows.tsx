@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Edit2, Trash2, Play, Pause, Workflow } from 'lucide-react'
+import { Plus, Edit2, Trash2, Workflow } from 'lucide-react'
 import { workflowAPI } from '@/services/api'
 import type { Workflow as WorkflowType } from '@/types'
 

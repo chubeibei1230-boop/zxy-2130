@@ -22,12 +22,6 @@ def login(login_data: UserLogin, db: Session = Depends(get_db)):
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
         )
-    if user.role != login_data.role:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Role mismatch",
-        )
-
     access_token = create_access_token(data={"sub": user.username})
     return {
         "accessToken": access_token,

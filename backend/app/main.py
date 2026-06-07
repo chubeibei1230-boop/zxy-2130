@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import engine, Base, SessionLocal
-from app.models import User, Workflow, WorkflowNode
+from app.models import User, Workflow, WorkflowNode, NodeConnection
 from app.auth import get_password_hash
 from app.routes import (
     auth_router,
@@ -179,6 +179,32 @@ def init_data():
             )
             db.add(end_node2)
             db.commit()
+
+        workflows = db.query(Workflow).all()
+        for workflow in workflows:
+            nodes = (
+                db.query(WorkflowNode)
+                .filter(WorkflowNode.workflow_id == workflow.id)
+                .order_by(WorkflowNode.position_y.asc(), WorkflowNode.id.asc())
+                .all()
+            )
+            for index, node in enumerate(nodes[:-1]):
+                exists = (
+                    db.query(NodeConnection)
+                    .filter(
+                        NodeConnection.from_node_id == node.id,
+                        NodeConnection.to_node_id == nodes[index + 1].id,
+                    )
+                    .first()
+                )
+                if not exists:
+                    db.add(
+                        NodeConnection(
+                            from_node_id=node.id,
+                            to_node_id=nodes[index + 1].id,
+                        )
+                    )
+        db.commit()
     finally:
         db.close()
 

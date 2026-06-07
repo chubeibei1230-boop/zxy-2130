@@ -97,6 +97,14 @@ export const applicationAPI = {
 };
 
 export const approvalAPI = {
+  getPendingApprovals: (): Promise<Application[]> =>
+    api.get('/approvals/pending').then((res) => res.data),
+  getHandledApprovals: (params?: { status?: string }): Promise<Application[]> =>
+    api
+      .get('/approvals/handled', { params: params?.status ? { status_filter: params.status } : undefined })
+      .then((res) => res.data),
+  getTransferUsers: (): Promise<User[]> =>
+    api.get('/approvals/transfer-users').then((res) => res.data),
   approve: (applicationId: number, comment: string): Promise<ApprovalRecord> =>
     api.post(`/approvals/${applicationId}/approve`, { comment }).then((res) => res.data),
   reject: (applicationId: number, comment: string): Promise<ApprovalRecord> =>

@@ -33,6 +33,23 @@ def serialize_application(app: Application, db: Session) -> dict:
     }
 
 
+def get_next_workflow_node(db: Session, current_node: WorkflowNode) -> WorkflowNode:
+    if not current_node:
+        return None
+    if current_node.outgoing_connections:
+        next_node_id = current_node.outgoing_connections[0].to_node_id
+        return db.query(WorkflowNode).filter(WorkflowNode.id == next_node_id).first()
+    return (
+        db.query(WorkflowNode)
+        .filter(
+            WorkflowNode.workflow_id == current_node.workflow_id,
+            WorkflowNode.position_y > current_node.position_y,
+        )
+        .order_by(WorkflowNode.position_y.asc(), WorkflowNode.id.asc())
+        .first()
+    )
+
+
 @router.get("", response_model=List[dict])
 def get_applications(
     status: Optional[str] = None,
@@ -181,13 +198,10 @@ def submit_application(
         WorkflowNode.type == "start",
     ).first()
 
-    next_node = None
-    if start_node and start_node.outgoing_connections:
-        next_node_id = start_node.outgoing_connections[0].to_node_id
-        next_node = db.query(WorkflowNode).filter(WorkflowNode.id == next_node_id).first()
+    next_node = get_next_workflow_node(db, start_node)
 
-    db_application.status = "pending"
-    db_application.current_node_id = next_node.id if next_node else None
+    db_application.status = "pending" if next_node else "completed"
+    db_application.current_node_id = next_node.id if next_node else start_node.id if start_node else None
     db.commit()
     db.refresh(db_application)
 
